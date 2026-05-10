@@ -34,7 +34,7 @@ struct Cli {
     host: Option<String>,
 
     /// Maximum time (ms) to wait for mDNS auto-discovery before giving up.
-    #[arg(long, default_value_t = 3_000, global = true)]
+    #[arg(long, default_value_t = 5_000, global = true)]
     discover_ms: u64,
 
     /// pi-receiver TCP port.

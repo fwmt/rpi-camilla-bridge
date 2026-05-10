@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-10
+
 ### Added
 
 - mDNS / DNS-SD auto-discovery. `pi-receiver` publishes
   `_camilla-bridge._tcp.local.` on every interface (auto-refreshing as
   Wi-Fi / Ethernet come and go); `pc-sender` invoked without `--host`
-  browses the LAN for ~3 s and connects to whatever Pi answers. If
+  browses the LAN for ~5 s and connects to whatever Pi answers. If
   multiple Pis answer, `pc-sender` lists them and asks the user to
   pick one with `--host <pi>.local`. Tolerant on both sides — if the
   daemon can't start, the receiver still serves on TCP and the sender
@@ -22,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OS resolver picks a working address — important on Pis with multiple
   interfaces (eno1, docker bridges, libvirt bridges) where
   `enable_addr_auto()` would otherwise advertise every one of them.
+
+### Fixed
+
+- `install-pi.sh` no longer dies with `tmpdir: unbound variable` at the
+  end of a successful run. The scratch directory was scoped to the
+  download function but referenced from a script-level EXIT trap;
+  promoted it to a script-scope `WORK_DIR` with a defensive `cleanup`.
+- `release.yml` workflow extracts the matching CHANGELOG section
+  literally (`index($0, header)` instead of regex) so the release body
+  isn't truncated to the generic fallback when the version contains
+  characters awk treats as a regex character class.
 
 ## [0.1.0] - 2026-05-10
 
@@ -106,5 +119,6 @@ crossovers, gain staging) always sit between the wire and the DAC.
   `.github/pull_request_template.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
 - Dual MIT / Apache-2.0 licensing.
 
-[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.1
 [0.1.0]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.0
