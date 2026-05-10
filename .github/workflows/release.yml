@@ -71,9 +71,12 @@ jobs:
           install: true
           cache: true
 
-      - name: Add target (native builds only)
+      - name: Ensure rust target + components (native builds only)
         if: matrix.cross == false
-        run: rustup target add ${{ matrix.target }}
+        shell: bash
+        run: |
+          rustup target add ${{ matrix.target }}
+          rustup component add rustfmt clippy
 
       - name: Cache cargo registry
         uses: actions/cache@v4

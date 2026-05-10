@@ -36,6 +36,12 @@ jobs:
           install: true
           cache: true
 
+      - name: Ensure clippy + rustfmt are installed
+        # mise installs rust via rustup-init but the "minimal" profile it
+        # uses on a fresh runner doesn't pull these components. They're
+        # required by `mise run ci` (clippy -D warnings, fmt-check).
+        run: rustup component add clippy rustfmt
+
       - name: Cache cargo registry & target
         uses: actions/cache@v4
         with:
@@ -64,6 +70,12 @@ jobs:
           version: 2026.4.28
           install: true
           cache: true
+
+      - name: Ensure clippy + rustfmt are installed
+        # mise installs rust via rustup-init but the "minimal" profile it
+        # uses on a fresh runner doesn't pull these components. They're
+        # required by `mise run ci` (clippy -D warnings, fmt-check).
+        run: rustup component add clippy rustfmt
 
       - name: Cache cargo registry
         uses: actions/cache@v4
