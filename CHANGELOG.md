@@ -7,40 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `pc-sender` now prints a friendly status line per major state transition
-  by default — "Audio output X is now in your Sound settings", "Streaming
-  to host:port — S32LE / 48000 Hz / 2ch", "Disconnected cleanly (1.1 MiB)"
-  — instead of structured `INFO` logs. ANSI colors enabled when stdout is
-  a TTY and `NO_COLOR` is unset. Use `--verbose` or `--log-level=…` to get
-  the structured tracing output back (recommended for bug reports).
-- `pc-sender` on Linux now registers a PulseAudio / PipeWire null-sink
-  named **rpi-camilla-bridge** at startup, sets its monitor as the
-  system default source, and captures from it. The bridge appears in
-  *Settings → Sound → Output* as a regular speaker; route any app there
-  and the audio flows to the Pi instead of your local speakers. The
-  sink is unloaded and the previous default source is restored when
-  `pc-sender` exits. Behavior is suppressed by `--no-virtual-sink` or
-  by passing an explicit `--device <name>`. Windows / macOS get the
-  pre-existing cpal default-input behaviour for now.
-
-### Changed
-
-- `pc-sender --device` documentation now reflects that the default
-  also creates the Linux virtual output. `--no-virtual-sink` is the
-  opt-out flag.
-- The Linux virtual output now appears as `Raspberry Pi (<host>)` in
-  the OS Sound settings (e.g. `Raspberry Pi (hifiberry)` when
-  `--host hifiberry.local` is passed) instead of the developer-y
-  `rpi-camilla-bridge`. Customizable via `--output-name "Living
-  Room"` for multi-Pi households. Internal sink id stays
-  `rpi_camilla_bridge` so app-level routing rules don't break across
-  upgrades.
-
 ## [0.1.0] - 2026-05-10
 
+First public release. PC ↔ Raspberry Pi audio bridge over TCP, feeding
+CamillaDSP through `snd-aloop` so the existing protections (limiters,
+crossovers, gain staging) always sit between the wire and the DAC.
+
 ### Added
+
+#### Core
 
 - `proto` crate: 16-byte wire header (CDSP magic, version, format
   S16/S32/F32 LE, channels, sample rate). Encoder, decoder, exhaustive
@@ -59,6 +34,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backoff bounded at 5 s, `list-devices` subcommand. Graceful shutdown
   in ~110 ms via `recv_timeout`-polling writer plus a TCP `shutdown(Both)`
   watchdog that unblocks `write_all` on Ctrl+C.
+
+#### End-user UX
+
+- `pc-sender` on Linux registers a PulseAudio / PipeWire null-sink at
+  startup so it appears as a regular speaker in
+  *Settings → Sound → Output*. Default label is `Raspberry Pi (<host>)`,
+  derived from `--host` (with `.local` stripped). Customizable via
+  `--output-name "Living Room"`. The sink is unloaded and the previous
+  default source restored on exit. Suppressed by `--no-virtual-sink`
+  or by passing an explicit `--device`.
+- `pc-sender` prints friendly status lines instead of structured logs
+  by default: `✓ Audio output … is now in your Sound settings`,
+  `✓ Streaming to host:port — S32LE / 48000 Hz / 2ch`,
+  `✓ Disconnected cleanly (1.1 MiB)`. ANSI color when stdout is a TTY;
+  suppressed by `NO_COLOR=1`. `--verbose` (or `--log-level=…`) brings
+  the structured tracing back for bug reports.
+
+#### Distribution
+
+- `install-pi.sh`: one-line installer
+  (`curl … | sudo bash`) that downloads the latest published binary,
+  verifies the SHA-256, creates the `pi-camilla` system user, drops the
+  `bridge.yml.example`, prompts for the path to the user's existing
+  CamillaDSP config (symlinked as `idle.yml`), installs the systemd
+  unit, and starts the service.
+- GitHub Actions release pipeline (`.github/workflows/release.yml`)
+  triggered by tags. Builds in parallel: `pi-receiver` for
+  aarch64-linux (cross), `pc-sender` for x86_64-linux,
+  x86_64-pc-windows-msvc, aarch64-apple-darwin. Each artifact bundles
+  the binary, README, both LICENSE files, the CHANGELOG and (for
+  pi-receiver) the deploy/ scaffolding. SHA-256 alongside each.
+  Release body sourced from this CHANGELOG.
+
+#### Project scaffolding
+
 - `deploy/bridge.yml.example`: minimal stereo passthrough template.
 - `deploy/pi-receiver.service`: systemd unit running as a dedicated
   unprivileged `pi-camilla` user.
@@ -74,6 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `libasound2-dev` installed inside the Docker image.
 - `deny.toml`: cargo-deny config (advisories deny-yanked, license
   allowlist).
+- `.github/workflows/ci.yml`: on every PR and push to main, runs
+  `mise run ci` and produces an aarch64 build artifact.
+- `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml`,
+  `.github/pull_request_template.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
 - Dual MIT / Apache-2.0 licensing.
 
 [Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.0...HEAD
