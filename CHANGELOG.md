@@ -7,15 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-10
+
 ### Added
 
-- `pi-receiver doctor` health-check subcommand. Walks the eight failure
-  modes that actually waste time in support tickets — snd-aloop loaded,
-  Loopback card visible, a DAC present, CamillaDSP websocket reachable,
-  bridge / idle configs readable and plausibly-shaped, the `--device`
-  flag passes the loopback guard, and a UDP 5353 listener exists for
-  mDNS. Each check prints one line (✓ / ! / ✗); exits non-zero if any
-  fails, so it slots into shell scripts. Read-only — never mutates state.
 - `pi-receiver init` interactive wizard. Reads `/proc/asound/cards`,
   filters out the loopback (so the speaker-protection guard is never
   asked to swallow a self-routed config), prompts for channels and
@@ -24,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the playback channel count, and the capture/playback samplerate.
   Filters / mixers / pipeline are kept as the empty-passthrough so the
   user adds their own protection chain — never auto-fills gain values.
+- `pi-receiver doctor` health-check subcommand. Walks the eight failure
+  modes that actually waste time in support tickets — snd-aloop loaded,
+  Loopback card visible, a DAC present, CamillaDSP websocket reachable,
+  bridge / idle configs readable and plausibly-shaped, the `--device`
+  flag passes the loopback guard, and a UDP 5353 listener exists for
+  mDNS. Each check prints one line (✓ / ! / ✗); exits non-zero if any
+  fails, so it slots into shell scripts. Read-only — never mutates state.
+
+### Changed
+
+- GitHub Actions workflows bumped to action versions that ship Node 24
+  internally (checkout v6, cache v5, upload-artifact v7, download-artifact
+  v8, mise-action v4, action-gh-release v3) — clears the Node 20
+  deprecation notice GitHub started attaching to every CI / release run.
 
 ## [0.1.1] - 2026-05-10
 
@@ -137,6 +146,7 @@ crossovers, gain staging) always sit between the wire and the DAC.
   `.github/pull_request_template.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
 - Dual MIT / Apache-2.0 licensing.
 
-[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.2
 [0.1.1]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.1
 [0.1.0]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.0
