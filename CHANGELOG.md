@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `pi-receiver` graceful shutdown is now actually graceful: previously
+  `systemctl stop` with an active TCP session hung for over a minute
+  before systemd timed out and sent SIGKILL, because the net-reader
+  thread was blocked in `read()` and `net_handle.join()` waited
+  behind it. `run_session` now clones the TCP stream and calls
+  `shutdown(Both)` from the watcher thread when stop is set —
+  unblocks the read immediately, the session drains cleanly, and
+  CamillaDSP's idle config is restored before exit. Same pattern as
+  pc-sender's existing watchdog. Measured stop time with an active
+  audio session dropped from >60 s to ~640 ms.
+
 ## [0.1.3] - 2026-05-10
 
 ### Added

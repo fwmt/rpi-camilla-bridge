@@ -276,16 +276,29 @@ fn run_session(
         .spawn(move || alsa.run(rx))
         .context("spawning ALSA writer")?;
 
+    // Clone the TCP stream so this thread can shutdown(Both) on it when a
+    // global stop is requested. Without that, the net-reader thread sits
+    // blocked in `read()` waiting for the 5 s read-timeout, and our
+    // `net_handle.join()` below sits blocked behind it — `systemctl stop`
+    // hangs for over a minute before SIGKILL takes over.
+    //
+    // Same pattern as pc-sender::main::try_session.
+    let stream_for_shutdown = stream
+        .try_clone()
+        .context("cloning TCP stream for shutdown signaling")?;
+
     let net_handle = std::thread::Builder::new()
         .name("net-reader".into())
         .spawn(move || net_in::pump(stream, tx))
         .context("spawning net reader")?;
 
-    // Park the main thread on the net side; if a global stop is requested we
-    // can't directly cancel the read, but the 5 s read timeout inside `pump`
-    // bounds the wait. The writer joins after the channel sender is dropped.
     while !net_handle.is_finished() {
         if stop.load(Ordering::SeqCst) {
+            // Force the in-flight `read()` to return immediately so the
+            // thread can observe the broken connection and exit. The OS
+            // closes the socket regardless once the process exits, but
+            // doing it here lets the join below complete in <100 ms.
+            let _ = stream_for_shutdown.shutdown(std::net::Shutdown::Both);
             break;
         }
         std::thread::sleep(Duration::from_millis(100));
