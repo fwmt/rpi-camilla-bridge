@@ -4,11 +4,50 @@
 [![license: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-orange.svg)](Cargo.toml)
 
-Stream PCM audio from a Linux/Windows PC to a Raspberry Pi running
-[CamillaDSP](https://github.com/HEnquist/camilladsp) over your LAN. The
-PC's audio lands inside an ALSA loopback that CamillaDSP captures from, so
-your existing CamillaDSP filters / limiters / crossovers stay in the path
-all the way to the DAC. Nothing else.
+Send your PC's audio to a Raspberry Pi DAC over the LAN, with all the
+filters / limiters / crossovers of your existing
+[CamillaDSP](https://github.com/HEnquist/camilladsp) setup in the path.
+
+## Quick start
+
+**On the Pi** (one-line install — needs CamillaDSP already running with an
+`snd-aloop` capture):
+
+```sh
+curl -sSL https://raw.githubusercontent.com/fwmt/rpi-camilla-bridge/main/install-pi.sh \
+  | sudo bash
+```
+
+The script downloads the latest binary, creates a service user, drops a
+template `bridge.yml`, and asks one question (the path to your existing
+CamillaDSP config). Edit `/etc/rpi-camilla-bridge/bridge.yml` to match
+your DAC, then `sudo systemctl restart pi-receiver`.
+
+**On the PC**, grab the matching binary from
+[Releases](https://github.com/fwmt/rpi-camilla-bridge/releases) — Linux,
+Windows, and macOS aarch64 builds are attached to every tagged release
+— and run:
+
+```sh
+pc-sender --host <your-pi>.local
+```
+
+That's it.
+
+- **Linux PCs**: a new audio output called **Raspberry Pi (\<host\>)**
+  appears in *Settings → Sound → Output*. Pick it and any app
+  (browser, Spotify, mpv, a DAW) routes straight to your Pi's DAC
+  through CamillaDSP. Quit `pc-sender`, the output disappears, your
+  previous default is restored.
+- **Windows**: until WASAPI loopback ships, install the free
+  [VB-CABLE](https://vb-audio.com/Cable/) virtual cable, set it as
+  your default output, and run `pc-sender --host <pi>.local
+  --device "CABLE Output"`.
+
+Ctrl+C exits cleanly in ~110 ms — CamillaDSP swaps back to your idle
+config and any other source (Tidal Connect, Roon, mpd) resumes.
+
+## How it works
 
 ```
 [PC: Windows or Linux]                          [Raspberry Pi + ALSA DAC]
@@ -32,15 +71,7 @@ all the way to the DAC. Nothing else.
 
 While a PC source is connected, the receiver flips CamillaDSP's active
 config via its websocket so the capture format matches what the wire is
-producing. On disconnect it restores your idle config (whatever you were
-running before — Tidal Connect, Roon, mpd, etc.).
-
-On Linux PCs (PulseAudio / PipeWire), `pc-sender` registers itself as a
-virtual output called **Raspberry Pi (\<host\>)** so it shows up in
-*Settings → Sound → Output* as a regular speaker. Pick it there and any
-app — browser, Spotify, mpv, a DAW — gets routed straight to your Pi's
-DAC through CamillaDSP. Quit `pc-sender` and the virtual output
-disappears, your previous default is restored.
+producing. On disconnect it restores your idle config.
 
 ## Why this exists
 
@@ -66,51 +97,6 @@ TCP, 16-byte header. Less than 1000 lines of Rust on each side.
 If your existing CamillaDSP setup feeds Tidal Connect, Roon, mpd, etc.
 through `snd-aloop`, you already have everything except the receiver
 binary and a second config file.
-
-## Pre-requisites
-
-- [`mise`](https://mise.jdx.dev/) for the toolchain. Install with
-  `curl https://mise.run | sh` and activate per your shell's instructions.
-- Docker (only needed for the cross-build to the Pi). Native build doesn't
-  need it.
-- On any **Linux** host that compiles `pi-receiver` or `pc-sender` natively,
-  ALSA development headers must be present:
-
-  ```sh
-  sudo apt-get install libasound2-dev    # Debian / Ubuntu / Pop!_OS
-  sudo dnf install alsa-lib-devel        # Fedora
-  sudo pacman -S alsa-lib                # Arch
-  ```
-
-  Cross-builds via `mise run build-pi` install ALSA inside the Docker
-  image automatically (see `Cross.toml`); no host install needed for that
-  path.
-- **Windows** needs only the standard MSVC toolchain that mise/rustup
-  pulls.
-
-## Setup
-
-```sh
-mise run setup        # installs Rust, cross, nextest, deny, machete, bacon, pnpm,
-                      # then `rustup target add aarch64-unknown-linux-gnu`
-```
-
-## Workflow
-
-| Task               | Command                |
-| ------------------ | ---------------------- |
-| Build (native)     | `mise run build`       |
-| Build (Pi aarch64) | `mise run build-pi`    |
-| Format             | `mise run fmt`         |
-| Format check       | `mise run fmt-check`   |
-| Lint (clippy -D)   | `mise run lint`        |
-| Tests (nextest)    | `mise run test`        |
-| Audit (cargo-deny) | `mise run audit`       |
-| Unused deps        | `mise run unused-deps` |
-| Watch              | `mise run watch`       |
-| Full local CI      | `mise run ci`          |
-
-`mise run ci` chains `fmt-check → lint → test → audit → unused-deps`.
 
 ## Wire protocol
 
@@ -173,9 +159,47 @@ could destroy a loudspeaker, so the binary will not let you do it. If
 you genuinely need to debug-write to a non-loopback device, edit
 `pi-receiver/src/main.rs::enforce_loopback_only` in your fork.
 
-## Quick start (smoke test)
+## Build from source
 
-After `mise run setup` and a build:
+For binary releases, the [Releases](https://github.com/fwmt/rpi-camilla-bridge/releases)
+page is enough — the rest of this section is for developers and folks
+on architectures we don't pre-build.
+
+Tools are pinned via [`mise`](https://mise.jdx.dev/). Install it with
+`curl https://mise.run | sh` and activate per your shell's instructions,
+then:
+
+```sh
+mise run setup        # installs Rust 1.95, cargo-cross, nextest, deny,
+                      # machete, bacon; adds aarch64 target.
+```
+
+Linux hosts compiling natively also need ALSA dev headers
+(`sudo apt-get install libasound2-dev` on Debian/Ubuntu, `dnf install
+alsa-lib-devel` on Fedora, `pacman -S alsa-lib` on Arch). Cross-builds
+to the Pi install ALSA inside the Docker image automatically — host
+ALSA headers aren't needed for `mise run build-pi`. Windows needs only
+the MSVC toolchain that mise/rustup pulls.
+
+Available tasks:
+
+| Task                    | Command                |
+| ----------------------- | ---------------------- |
+| Build (native)          | `mise run build`       |
+| Build (Pi aarch64)      | `mise run build-pi`    |
+| Format                  | `mise run fmt`         |
+| Format check            | `mise run fmt-check`   |
+| Lint (clippy `-D warnings`) | `mise run lint`    |
+| Tests (nextest)         | `mise run test`        |
+| Audit (cargo-deny)      | `mise run audit`       |
+| Unused deps             | `mise run unused-deps` |
+| Watch                   | `mise run watch`       |
+| Full local CI           | `mise run ci`          |
+
+`mise run ci` chains `fmt-check → lint → test → audit → unused-deps` —
+same pipeline GitHub Actions runs on PRs.
+
+### Manual smoke test (without the install script)
 
 ```sh
 # 1. Adapt the example bridge config to your DAC.
