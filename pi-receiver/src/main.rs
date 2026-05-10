@@ -9,6 +9,7 @@
 mod alsa_out;
 mod camilla_ws;
 mod discovery;
+mod doctor;
 mod init;
 mod net_in;
 
@@ -75,14 +76,27 @@ enum Cmd {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Quick health check — verifies snd-aloop, CamillaDSP, configs and
+    /// mDNS without changing any state. Exits non-zero on any failure.
+    Doctor,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(&cli.log_level);
 
-    if let Some(Cmd::Init { output }) = cli.cmd {
-        return init::run_wizard(output);
+    match cli.cmd {
+        Some(Cmd::Init { output }) => return init::run_wizard(output),
+        Some(Cmd::Doctor) => {
+            return doctor::run(doctor::DoctorOpts {
+                bridge_config: cli.bridge_config.as_deref(),
+                idle_config: cli.idle_config.as_deref(),
+                camilla_host: &cli.camilla_host,
+                camilla_port: cli.camilla_port,
+                device: &cli.device,
+            });
+        }
+        None => {}
     }
 
     // Hard speaker-protection guard: refuse to open anything that isn't an

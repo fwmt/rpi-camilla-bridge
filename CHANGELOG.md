@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pi-receiver doctor` health-check subcommand. Walks the eight failure
+  modes that actually waste time in support tickets — snd-aloop loaded,
+  Loopback card visible, a DAC present, CamillaDSP websocket reachable,
+  bridge / idle configs readable and plausibly-shaped, the `--device`
+  flag passes the loopback guard, and a UDP 5353 listener exists for
+  mDNS. Each check prints one line (✓ / ! / ✗); exits non-zero if any
+  fails, so it slots into shell scripts. Read-only — never mutates state.
 - `pi-receiver init` interactive wizard. Reads `/proc/asound/cards`,
   filters out the loopback (so the speaker-protection guard is never
   asked to swallow a self-routed config), prompts for channels and
