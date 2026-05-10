@@ -158,8 +158,10 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           # Pull the section between `## [VERSION]` and the next `## [`.
-          awk -v ver="[$VERSION]" '
-            $0 ~ "^## " ver { found=1; next }
+          # `[VERSION]` would be interpreted as an awk regex character
+          # class, so we match it literally with `index()` instead.
+          awk -v header="## [$VERSION]" '
+            index($0, header) == 1 { found = 1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > release-body.md
