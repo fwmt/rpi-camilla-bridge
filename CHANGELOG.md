@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pc-sender` on Linux now mirrors the OS Sound-settings volume of its
+  virtual sink to CamillaDSP's main volume. Subscribes to `pactl
+  subscribe`, parses `change' on sink` events, queries the
+  `rpi_camilla_bridge` sink's dB value, and pushes via the Pi's
+  CamillaDSP websocket. Forces `LC_ALL=C` so non-English locales don't
+  break the parser. Disable with `--no-volume-sync` if you have your
+  own volume bridge that owns the DSP cap (e.g. a custom
+  `volume_bridge.py` that maps a hardware volume control to a safe
+  range — letting both fight produces inconsistent caps).
+- `deploy/pc-sender.service` — systemd `--user` unit so the bridge
+  starts automatically on login and restarts on failure. Linger
+  (`loginctl enable-linger`) keeps it alive across logout. `Install:
+  cp deploy/pc-sender.service ~/.config/systemd/user/`.
+
 ## [0.1.2] - 2026-05-10
 
 ### Added

@@ -1,0 +1,20 @@
+[Unit]
+Description=rpi-camilla-bridge: PC audio → Raspberry Pi (auto)
+# Audio stack must be up before we can register a virtual sink.
+After=pipewire.service pipewire-pulse.service pulseaudio.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adjust if pc-sender is somewhere else (e.g. /usr/local/bin/pc-sender for
+# a system-wide install — but a user service should never need root).
+ExecStart=%h/.local/bin/pc-sender
+Restart=on-failure
+RestartSec=2
+# We rely on the binary's own quiet-by-default output; let stdout/stderr
+# land in journalctl --user -u pc-sender for diagnosis.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

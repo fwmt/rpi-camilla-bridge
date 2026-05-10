@@ -19,3 +19,5 @@ crossbeam-channel.workspace = true
 ctrlc.workspace = true
 cpal.workspace = true
 mdns-sd.workspace = true
+tungstenite.workspace = true
+serde_json.workspace = true

@@ -6,6 +6,8 @@ mod net_out;
 mod status;
 #[cfg(target_os = "linux")]
 mod virtual_sink;
+#[cfg(target_os = "linux")]
+mod volume_sync;
 
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -61,6 +63,11 @@ struct Cli {
     /// homes can tell their living-room and bedroom DACs apart.
     #[arg(long, global = true)]
     output_name: Option<String>,
+
+    /// Linux only: skip the volume-sync watcher that mirrors PA volume
+    /// changes on the virtual output to CamillaDSP's main volume.
+    #[arg(long, global = true, default_value_t = false)]
+    no_volume_sync: bool,
 
     /// Optional cpal host to pin (e.g. "alsa", "wasapi"). Empty = platform default.
     #[arg(long, global = true)]
@@ -237,6 +244,18 @@ fn run(mut cli: Cli) -> Result<()> {
         status::ok(format!(
             "Audio output \"{label}\" is now in your Sound settings — pick it to route apps here"
         ));
+    }
+
+    // Best-effort: keep CamillaDSP's main volume in sync with whatever
+    // the user picks for our virtual sink in the OS Sound settings.
+    // Tolerant of missing pactl, mDNS-only Pi names, and CamillaDSP
+    // restarts — never stops the audio path.
+    #[cfg(target_os = "linux")]
+    if virtual_sink_handle.is_some() && !cli.no_volume_sync {
+        // CamillaDSP's WS lives at the same host as pi-receiver, port
+        // 1234 (its default). We resolve `host` (mDNS hostname, IP, or
+        // user-supplied) to whichever the OS hands us.
+        volume_sync::spawn(Arc::clone(&stop), host.clone(), 1234);
     }
 
     let (_host, device) = audio_in::pick_device(cli.cpal_host.as_deref(), &cli.device)

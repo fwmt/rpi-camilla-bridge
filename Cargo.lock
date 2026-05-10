@@ -827,8 +827,10 @@ dependencies = [
  "ctrlc",
  "mdns-sd",
  "proto",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
+ "tungstenite",
 ]
 
 [[package]]
