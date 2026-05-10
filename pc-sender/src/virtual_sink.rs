@@ -43,6 +43,13 @@ impl VirtualSink {
             return Ok(None);
         }
 
+        // Cleanup any orphaned null-sinks left over from a previous run
+        // that crashed or was SIGKILLed before its Drop got to run. PA
+        // happily allows multiple modules with the same sink_name, which
+        // would surface as duplicate "Raspberry Pi" entries in the OS
+        // Sound settings.
+        unload_orphans();
+
         let prev = run_pactl(&["get-default-source"])
             .ok()
             .map(|s| s.trim().to_string())
@@ -135,4 +142,37 @@ fn which_pactl() -> Option<String> {
         .ok()
         .filter(|o| o.status.success())
         .map(|_| "pactl".into())
+}
+
+/// Find every loaded `module-null-sink` whose argument string contains
+/// our `sink_name=rpi_camilla_bridge` and unload it. Survives multiple
+/// crashed pc-sender instances stacking duplicate sinks in the OS
+/// Sound output list. Forces `LC_ALL=C` so the field labels we grep
+/// don't translate.
+fn unload_orphans() {
+    let Ok(output) = Command::new("pactl")
+        .env("LC_ALL", "C")
+        .args(["list", "modules"])
+        .output()
+    else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    let mut current_id: Option<String> = None;
+    for raw in text.lines() {
+        let line = raw.trim_start();
+        if let Some(rest) = line.strip_prefix("Module #") {
+            current_id = Some(rest.trim().to_string());
+        } else if line.starts_with("Argument:")
+            && line.contains(&format!("sink_name={SINK_NAME}"))
+            && let Some(id) = current_id.take()
+        {
+            tracing::info!(module_id = %id, "unloading orphan virtual sink from previous run");
+            let _ = run_pactl(&["unload-module", &id]);
+        }
+    }
 }

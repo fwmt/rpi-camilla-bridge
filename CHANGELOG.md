@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pc-sender` smart sleep — when the input is silent (peak below
+  -60 dBFS) for `--idle-after-secs` seconds (default 30), the bridge
+  releases the TCP/loopback path. pi-receiver detects the close and
+  swaps CamillaDSP back to the idle config, freeing the DAC for
+  Tidal Connect / Roon / mpd / etc. Reconnects automatically when
+  audio resumes. The virtual output stays visible in the OS Sound
+  settings the entire time, so the transition is invisible to the
+  user. Set to 0 to disable smart sleep (bridge stays connected
+  forever, like before).
 - `pc-sender` on Linux now mirrors the OS Sound-settings volume of its
   virtual sink to CamillaDSP's main volume. Subscribes to `pactl
   subscribe`, parses `change' on sink` events, queries the
@@ -18,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own volume bridge that owns the DSP cap (e.g. a custom
   `volume_bridge.py` that maps a hardware volume control to a safe
   range — letting both fight produces inconsistent caps).
+### Fixed
+
+- Duplicate "Raspberry Pi" entries in the OS Sound output list when
+  pc-sender was SIGKILLed (or the host crashed) before its `Drop`
+  could unload the virtual sink: `VirtualSink::try_create` now
+  unloads every existing `module-null-sink` matching our sink name
+  before registering a new one. Survives any number of stacked
+  orphans from previous crashed runs.
+- `pc-sender` no longer spams `network queue full → dropped chunk`
+  while smart-sleeping; the warning only fires when a chunk above
+  -60 dBFS is dropped, so genuine network overload is still visible.
+
+### Added
+
 - `deploy/pc-sender.service` — systemd `--user` unit so the bridge
   starts automatically on login and restarts on failure. Linger
   (`loginctl enable-linger`) keeps it alive across logout. `Install:

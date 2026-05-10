@@ -63,6 +63,7 @@ trivially_copy_pass_by_ref = "allow"
 match_wildcard_for_single_variants = "allow"
 match_same_arms = "allow"
 needless_continue = "allow"
+too_many_arguments = "allow"
 
 [profile.release]
 lto = "thin"

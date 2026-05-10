@@ -1,5 +1,6 @@
 //! pc-sender: capture local audio via cpal and stream PCM to pi-receiver over TCP.
 
+mod activity;
 mod audio_in;
 mod discovery;
 mod net_out;
@@ -93,6 +94,14 @@ struct Cli {
     /// Initial reconnect delay in milliseconds. Doubles up to 5 s on consecutive failures.
     #[arg(long, default_value_t = 1_000, global = true)]
     reconnect_ms: u64,
+
+    /// Smart-sleep idle timeout in seconds. After this much continuous
+    /// silence on the input, the bridge releases the TCP/loopback so
+    /// other CamillaDSP sources (Tidal, Roon, mpd) can take over the
+    /// DAC. Reconnects automatically when audio resumes. Set to 0 to
+    /// disable smart sleep — the bridge then stays connected forever.
+    #[arg(long, default_value_t = 30, global = true)]
+    idle_after_secs: u64,
 
     /// Show structured debug-level logs instead of the friendly status
     /// summary. Same effect as `--log-level debug`. Useful for bug reports.
@@ -270,14 +279,44 @@ fn run(mut cli: Cli) -> Result<()> {
     };
 
     // The audio side stays up across reconnects; only the TCP side is rebuilt.
+    let activity = activity::ActivityTracker::new();
     let (tx, rx) = bounded::<Vec<u8>>(64);
-    let stream = audio_in::open_capture(&device, &spec, tx).context("opening capture")?;
+    let stream =
+        audio_in::open_capture(&device, &spec, tx, activity.clone()).context("opening capture")?;
     stream.play().context("starting capture stream")?;
 
+    let smart_sleep = cli.idle_after_secs > 0;
+    let idle_after = Duration::from_secs(cli.idle_after_secs);
     let mut backoff_ms = cli.reconnect_ms;
     let mut had_session = false;
+    let mut announced_sleep = false;
     while !stop.load(Ordering::SeqCst) {
-        match try_session(&cli, &host, &spec, &rx, &stop) {
+        // Smart sleep: if there's no audio playing right now, don't even
+        // open a TCP session — the loopback stays free for other
+        // CamillaDSP sources. Poll until something plays or stop fires.
+        if smart_sleep && !activity.is_active(idle_after) {
+            if !announced_sleep {
+                status::info("No audio for a while — releasing the Pi until something plays.");
+                announced_sleep = true;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            continue;
+        }
+        if announced_sleep {
+            status::step("Audio detected — reconnecting to the Pi…");
+            announced_sleep = false;
+        }
+
+        match try_session(
+            &cli,
+            &host,
+            &spec,
+            &rx,
+            &stop,
+            &activity,
+            idle_after,
+            smart_sleep,
+        ) {
             Ok(()) => {
                 backoff_ms = cli.reconnect_ms;
                 had_session = true;
@@ -297,7 +336,6 @@ fn run(mut cli: Cli) -> Result<()> {
         }
         let sleep_ms = backoff_ms.min(5_000);
         info!(reconnect_in_ms = sleep_ms, "sleeping before reconnect");
-        status::info(format!("Retrying in {sleep_ms} ms…"));
         let until = std::time::Instant::now() + Duration::from_millis(sleep_ms);
         while std::time::Instant::now() < until && !stop.load(Ordering::SeqCst) {
             std::thread::sleep(Duration::from_millis(50));
@@ -314,6 +352,9 @@ fn try_session(
     spec: &audio_in::CaptureSpec,
     rx: &crossbeam_channel::Receiver<Vec<u8>>,
     stop: &Arc<AtomicBool>,
+    activity: &activity::ActivityTracker,
+    idle_after: Duration,
+    smart_sleep: bool,
 ) -> Result<()> {
     info!(host = %host, port = cli.port, "connecting");
     let mut stream =
@@ -373,7 +414,17 @@ fn try_session(
             let _ = stream_for_shutdown.shutdown(std::net::Shutdown::Both);
             break;
         }
-        std::thread::sleep(Duration::from_millis(50));
+        // Smart sleep: silence beyond the idle window → release the
+        // session cleanly. pi-receiver detects the close and swaps
+        // CamillaDSP back to the idle config so other sources can grab
+        // the loopback. Reconnect happens automatically when audio
+        // resumes (the outer loop's activity check flips back to true).
+        if smart_sleep && !activity.is_active(idle_after) {
+            status::info("Audio went silent — releasing the Pi.");
+            let _ = stream_for_shutdown.shutdown(std::net::Shutdown::Both);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
 
     let total = writer

@@ -12,6 +12,8 @@ use crossbeam_channel::{Sender, TrySendError};
 use proto::Format;
 use tracing::{info, warn};
 
+use crate::activity::ActivityTracker;
+
 /// Best-effort human label for a cpal device, preferring the new `description`
 /// API and falling back to the deprecated `name` accessor when that's all the
 /// host backend exposes. Used for both matching by name and logging.
@@ -59,8 +61,15 @@ pub fn pick_device(host_name: Option<&str>, device_name: &str) -> Result<(Host, 
 
 /// Open an input stream that delivers samples to `tx` already encoded as the
 /// configured wire format. The returned `Stream` must be kept alive — dropping
-/// it stops capture.
-pub fn open_capture(device: &Device, spec: &CaptureSpec, tx: Sender<Vec<u8>>) -> Result<Stream> {
+/// it stops capture. Each chunk's peak amplitude is also reported to
+/// `activity` so the main thread can engage / disengage the TCP path
+/// based on whether anything is actually playing.
+pub fn open_capture(
+    device: &Device,
+    spec: &CaptureSpec,
+    tx: Sender<Vec<u8>>,
+    activity: ActivityTracker,
+) -> Result<Stream> {
     // Walk supported configs to find one compatible with our requested
     // (channels, rate). When multiple match, prefer the highest-fidelity
     // sample format — many cpal/ALSA hosts list U8/I8 first which is the
@@ -107,42 +116,60 @@ pub fn open_capture(device: &Device, spec: &CaptureSpec, tx: Sender<Vec<u8>>) ->
     let wire = spec.wire_format;
 
     let stream = match device_format {
-        SampleFormat::F32 => device.build_input_stream(
-            &config,
-            move |data: &[f32], _| forward(data, wire, &tx),
-            err_fn,
-            None,
-        ),
-        SampleFormat::I32 => device.build_input_stream(
-            &config,
-            move |data: &[i32], _| forward(data, wire, &tx),
-            err_fn,
-            None,
-        ),
-        SampleFormat::I16 => device.build_input_stream(
-            &config,
-            move |data: &[i16], _| forward(data, wire, &tx),
-            err_fn,
-            None,
-        ),
-        SampleFormat::U16 => device.build_input_stream(
-            &config,
-            move |data: &[u16], _| forward_u16(data, wire, &tx),
-            err_fn,
-            None,
-        ),
-        SampleFormat::U8 => device.build_input_stream(
-            &config,
-            move |data: &[u8], _| forward_u8(data, wire, &tx),
-            err_fn,
-            None,
-        ),
-        SampleFormat::I8 => device.build_input_stream(
-            &config,
-            move |data: &[i8], _| forward(data, wire, &tx),
-            err_fn,
-            None,
-        ),
+        SampleFormat::F32 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _| forward(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::I32 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[i32], _| forward(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::I16 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _| forward(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::U16 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[u16], _| forward_u16(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::U8 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[u8], _| forward_u8(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
+        SampleFormat::I8 => {
+            let act = activity.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[i8], _| forward(data, wire, &tx, &act),
+                err_fn,
+                None,
+            )
+        }
         other => bail!("unsupported cpal sample format: {other:?}"),
     }
     .context("build_input_stream")?;
@@ -150,7 +177,22 @@ pub fn open_capture(device: &Device, spec: &CaptureSpec, tx: Sender<Vec<u8>>) ->
     Ok(stream)
 }
 
-fn forward<T>(samples: &[T], wire: Format, tx: &Sender<Vec<u8>>)
+fn peak_abs<T>(samples: &[T]) -> f32
+where
+    T: Sample + Copy,
+    f32: FromSample<T>,
+{
+    let mut peak: f32 = 0.0;
+    for &s in samples {
+        let v = f32::from_sample(s).abs();
+        if v > peak {
+            peak = v;
+        }
+    }
+    peak
+}
+
+fn forward<T>(samples: &[T], wire: Format, tx: &Sender<Vec<u8>>, activity: &ActivityTracker)
 where
     T: Sample + Copy,
     i16: FromSample<T>,
@@ -160,11 +202,13 @@ where
     if samples.is_empty() {
         return;
     }
+    let peak = peak_abs(samples);
+    activity.note_peak(peak);
     let bytes = encode(samples, wire);
-    push(tx, bytes);
+    push(tx, bytes, peak);
 }
 
-fn forward_u16(samples: &[u16], wire: Format, tx: &Sender<Vec<u8>>) {
+fn forward_u16(samples: &[u16], wire: Format, tx: &Sender<Vec<u8>>, activity: &ActivityTracker) {
     if samples.is_empty() {
         return;
     }
@@ -174,11 +218,13 @@ fn forward_u16(samples: &[u16], wire: Format, tx: &Sender<Vec<u8>>) {
     for &s in samples {
         as_i16.push((s as i32 - i32::from(i16::MAX) - 1) as i16);
     }
+    let peak = peak_abs(&as_i16);
+    activity.note_peak(peak);
     let bytes = encode(&as_i16, wire);
-    push(tx, bytes);
+    push(tx, bytes, peak);
 }
 
-fn forward_u8(samples: &[u8], wire: Format, tx: &Sender<Vec<u8>>) {
+fn forward_u8(samples: &[u8], wire: Format, tx: &Sender<Vec<u8>>, activity: &ActivityTracker) {
     if samples.is_empty() {
         return;
     }
@@ -187,8 +233,10 @@ fn forward_u8(samples: &[u8], wire: Format, tx: &Sender<Vec<u8>>) {
     for &s in samples {
         as_i8.push((s as i16 - 128) as i8);
     }
+    let peak = peak_abs(&as_i8);
+    activity.note_peak(peak);
     let bytes = encode(&as_i8, wire);
-    push(tx, bytes);
+    push(tx, bytes, peak);
 }
 
 /// Score sample formats by music-bridge fidelity. Higher = better.
@@ -235,13 +283,21 @@ where
     out
 }
 
-fn push(tx: &Sender<Vec<u8>>, chunk: Vec<u8>) {
+fn push(tx: &Sender<Vec<u8>>, chunk: Vec<u8>, peak: f32) {
     // The audio callback must never block. If the network queue is full we
     // drop the newest chunk — the alternative (blocking inside cpal) would
     // glitch the source application's playback worse.
     match tx.try_send(chunk) {
         Ok(()) => {}
-        Err(TrySendError::Full(_)) => warn!("network queue full → dropped chunk"),
+        Err(TrySendError::Full(_)) => {
+            // Smart-sleep silently fills the channel with silent chunks
+            // while the TCP path is released; warning every 10 ms in
+            // that state turns the log into noise. Only complain when
+            // the chunk had real audio content (peak above ~-60 dBFS).
+            if peak > 0.001 {
+                warn!("network queue full → dropped chunk");
+            }
+        }
         Err(TrySendError::Disconnected(_)) => {}
     }
 }
