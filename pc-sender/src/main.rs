@@ -2,6 +2,7 @@
 
 mod audio_in;
 mod net_out;
+mod status;
 #[cfg(target_os = "linux")]
 mod virtual_sink;
 
@@ -79,9 +80,16 @@ struct Cli {
     #[arg(long, default_value_t = 1_000, global = true)]
     reconnect_ms: u64,
 
-    /// Log level (trace, debug, info, warn, error). Overridden by `RUST_LOG`.
-    #[arg(long, default_value = "info", global = true)]
-    log_level: String,
+    /// Show structured debug-level logs instead of the friendly status
+    /// summary. Same effect as `--log-level debug`. Useful for bug reports.
+    #[arg(long, global = true, default_value_t = false)]
+    verbose: bool,
+
+    /// Log level filter (`trace`, `debug`, `info`, `warn`, `error`).
+    /// Overridden by the `RUST_LOG` env var. Implies `--verbose`-style
+    /// structured output regardless of TTY.
+    #[arg(long, global = true)]
+    log_level: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -109,7 +117,7 @@ impl From<WireFormat> for Format {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    init_logging(&cli.log_level);
+    init_logging(cli.verbose, cli.log_level.as_deref());
 
     match &cli.cmd {
         Some(Cmd::ListDevices) => list_devices(),
@@ -117,12 +125,24 @@ fn main() -> Result<()> {
     }
 }
 
-fn init_logging(default_level: &str) {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+/// Tracing subscriber. Two modes:
+///   - **Quiet** (default for end users): only `WARN`+ tracing reaches
+///     stderr. Status messages come through `println!` from the
+///     `status` module so they read like a tool, not a log file.
+///   - **Verbose**: full structured `INFO` logs, useful for bug reports.
+///
+/// `--verbose` and `--log-level <X>` both bump to verbose mode; the
+/// `RUST_LOG` env var trumps either.
+fn init_logging(verbose: bool, log_level: Option<&str>) {
+    let default = if verbose || log_level.is_some() {
+        log_level.unwrap_or("info")
+    } else {
+        "warn"
+    };
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_target(true)
+        .with_target(verbose)
         .compact()
         .init();
 }
@@ -180,7 +200,7 @@ fn run(cli: Cli) -> Result<()> {
     // its Drop impl unloads the sink and restores the previous default
     // source. Other platforms get whatever cpal exposes as default.
     #[cfg(target_os = "linux")]
-    let _virtual_sink = (!cli.no_virtual_sink && cli.device == "default")
+    let virtual_sink_handle = (!cli.no_virtual_sink && cli.device == "default")
         .then(|| {
             let description = cli
                 .output_name
@@ -192,10 +212,21 @@ fn run(cli: Cli) -> Result<()> {
                 .flatten()
         })
         .flatten();
+    #[cfg(target_os = "linux")]
+    if virtual_sink_handle.is_some() {
+        let label = cli
+            .output_name
+            .clone()
+            .unwrap_or_else(|| default_output_name(&cli.host));
+        status::ok(format!(
+            "Audio output \"{label}\" is now in your Sound settings — pick it to route apps here"
+        ));
+    }
 
     let (_host, device) = audio_in::pick_device(cli.cpal_host.as_deref(), &cli.device)
         .context("selecting cpal input device")?;
     info!(name = device_label(&device), "using input device");
+    status::step(format!("Capturing from \"{}\"", device_label(&device)));
 
     let spec = audio_in::CaptureSpec {
         rate: cli.rate,
@@ -209,11 +240,21 @@ fn run(cli: Cli) -> Result<()> {
     stream.play().context("starting capture stream")?;
 
     let mut backoff_ms = cli.reconnect_ms;
+    let mut had_session = false;
     while !stop.load(Ordering::SeqCst) {
         match try_session(&cli, &spec, &rx, &stop) {
-            Ok(()) => backoff_ms = cli.reconnect_ms,
+            Ok(()) => {
+                backoff_ms = cli.reconnect_ms;
+                had_session = true;
+            }
             Err(e) => {
                 warn!(error = %e, "session ended; will reconnect");
+                if had_session {
+                    status::warn(format!("Lost connection to {}: {e}", cli.host));
+                    had_session = false;
+                } else {
+                    status::warn(format!("Could not reach {}:{}: {e}", cli.host, cli.port));
+                }
             }
         }
         if stop.load(Ordering::SeqCst) {
@@ -221,6 +262,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         let sleep_ms = backoff_ms.min(5_000);
         info!(reconnect_in_ms = sleep_ms, "sleeping before reconnect");
+        status::info(format!("Retrying in {sleep_ms} ms…"));
         let until = std::time::Instant::now() + Duration::from_millis(sleep_ms);
         while std::time::Instant::now() < until && !stop.load(Ordering::SeqCst) {
             std::thread::sleep(Duration::from_millis(50));
@@ -256,6 +298,10 @@ fn try_session(
         sample_rate = header.sample_rate,
         "header sent",
     );
+    status::ok(format!(
+        "Streaming to {}:{} — {:?} / {} Hz / {}ch",
+        cli.host, cli.port, header.format, header.sample_rate, header.channels
+    ));
 
     // Drain any chunks that piled up while disconnected so we start the new
     // connection close to real-time instead of catching up with stale audio.
@@ -298,7 +344,25 @@ fn try_session(
         .join()
         .map_err(|_| anyhow::anyhow!("writer panicked"))??;
     info!(bytes_sent = total, "session ended");
+    if stop.load(Ordering::SeqCst) {
+        status::ok(format!("Disconnected cleanly ({})", human_bytes(total)));
+    }
     Ok(())
+}
+
+fn human_bytes(n: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = KIB * 1024;
+    const GIB: u64 = MIB * 1024;
+    if n >= GIB {
+        format!("{:.2} GiB", n as f64 / GIB as f64)
+    } else if n >= MIB {
+        format!("{:.1} MiB", n as f64 / MIB as f64)
+    } else if n >= KIB {
+        format!("{:.1} KiB", n as f64 / KIB as f64)
+    } else {
+        format!("{n} B")
+    }
 }
 
 /// Default user-facing label for the virtual output. Drops a trailing

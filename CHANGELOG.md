@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pc-sender` now prints a friendly status line per major state transition
+  by default — "Audio output X is now in your Sound settings", "Streaming
+  to host:port — S32LE / 48000 Hz / 2ch", "Disconnected cleanly (1.1 MiB)"
+  — instead of structured `INFO` logs. ANSI colors enabled when stdout is
+  a TTY and `NO_COLOR` is unset. Use `--verbose` or `--log-level=…` to get
+  the structured tracing output back (recommended for bug reports).
 - `pc-sender` on Linux now registers a PulseAudio / PipeWire null-sink
   named **rpi-camilla-bridge** at startup, sets its monitor as the
   system default source, and captures from it. The bridge appears in
