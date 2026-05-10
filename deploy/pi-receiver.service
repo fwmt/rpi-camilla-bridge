@@ -1,0 +1,43 @@
+[Unit]
+Description=rpi-camilla-bridge: TCP -> ALSA loopback for CamillaDSP
+Documentation=https://github.com/fwmt/rpi-camilla-bridge
+# CamillaDSP must be up first; we talk to it on the local websocket.
+After=camilladsp.service network-online.target sound.target
+Wants=network-online.target
+Requires=camilladsp.service
+
+[Service]
+Type=simple
+User=pi-camilla
+Group=audio
+SupplementaryGroups=audio
+ExecStart=/usr/local/bin/pi-receiver \
+  --port 9000 \
+  --device hw:Loopback,0,0 \
+  --buffer-ms 200 \
+  --camilla-host 127.0.0.1 \
+  --camilla-port 1234 \
+  --bridge-config /home/fwmt/camilladsp/configs/bridge.yml \
+  --idle-config   /home/fwmt/camilladsp/configs/music.yml
+Restart=on-failure
+RestartSec=2
+
+# Minimal hardening — anything stricter (ProtectSystem=strict, ProtectHome,
+# PrivateTmp) breaks ALSA's config resolution under this build of libasound:
+# `snd_config_get_card` can no longer find the Loopback card alias and the
+# bridge dies on every connect with "Cannot get card index for Loopback".
+# We rely instead on:
+#   - the dedicated unprivileged `pi-camilla` system user (no shell, no home);
+#   - the `enforce_loopback_only` guard inside pi-receiver, which refuses to
+#     open any device whose name does not contain "loopback" — so even with
+#     full filesystem access the binary cannot reach the DAC directly.
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+# Environment
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

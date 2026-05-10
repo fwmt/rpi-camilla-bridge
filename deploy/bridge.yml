@@ -1,0 +1,252 @@
+# bridge.yml — CamillaDSP config used while rpi-camilla-bridge is delivering
+# audio from a PC over TCP. This file is a derivative of music.yml: every
+# section below devices.capture* is intentionally identical to music.yml so
+# the protections, gain staging, crossovers and bass-management mixer remain
+# active. The only fields that change are the capture format/rate/channels,
+# which must match what the PC sender is putting on the wire.
+#
+# Default wire contract (match `pc-sender --rate / --format / --channels`):
+#   format: S32LE
+#   capture_samplerate: 48000
+#   channels: 2
+# CamillaDSP resamples to its internal 96 kHz with AsyncSinc — the PC never
+# resamples. If you change this contract, change pc-sender flags AND this
+# capture block together.
+
+description: "Bridge config: PC → rpi-camilla-bridge → snd-aloop → CamillaDSP\
+  \ (resample 48 → 96 kHz) → HiFiBerry DAC8x. Derived from music.yml; only the\
+  \ capture section diverges. All filters, mixers, limiters and pipeline are\
+  \ kept identical to music.yml so loudspeaker protections stay active.\n"
+devices:
+  adjust_period: 5
+  capture:
+    channels: 2
+    device: hw:CARD=Loopback,DEV=1
+    format: S32LE
+    labels:
+    - L
+    - R
+    link_mute_control: null
+    link_volume_control: null
+    stop_on_inactive: false
+    type: Alsa
+  capture_samplerate: 48000
+  chunksize: 2048
+  enable_rate_adjust: true
+  multithreaded: false
+  playback:
+    channels: 8
+    device: hw:CARD=sndrpihifiberry,DEV=0
+    format: S32LE
+    type: Alsa
+  queuelimit: 4
+  rate_measure_interval: null
+  resampler:
+    profile: Balanced
+    type: AsyncSinc
+  samplerate: 96000
+  silence_threshold: -60
+  silence_timeout: 0
+  stop_on_rate_change: false
+  target_level: 2048
+  volume_limit: -12
+  volume_ramp_time: 400
+  worker_threads: null
+filters:
+  gain_mains:
+    description: Physical gain staging for all main channels (front, center and surrounds)
+      to match amplifier sensitivity and prevent clipping.
+    parameters:
+      gain: -4
+      inverted: false
+      mute: false
+      scale: dB
+    type: Gain
+  gain_sub_mono:
+    description: Physical gain staging for mono subwoofer (JBL S3-1224) driven by
+      high-gain amplifier in bridged mode.
+    parameters:
+      gain: -18
+      inverted: false
+      mute: false
+      scale: dB
+    type: Gain
+  gain_sub_stereo:
+    description: Physical gain staging for stereo subwoofers (NAR 1222.sw2) driven
+      by lower-gain stereo amplifier.
+    parameters:
+      gain: -11
+      inverted: false
+      mute: false
+      scale: dB
+    type: Gain
+  hpf_mains:
+    description: Linkwitz-Riley 4th order high-pass crossover for main speakers at
+      80 Hz to offload low frequencies to subwoofers.
+    parameters:
+      freq: 80
+      order: 4
+      type: LinkwitzRileyHighpass
+    type: BiquadCombo
+  limiter_mains:
+    description: Safety peak limiter for main channels to prevent digital clipping
+      and protect loudspeakers from transient overload.
+    parameters:
+      clip_limit: -3
+      soft_clip: true
+    type: Limiter
+  limiter_sub_mono:
+    description: Safety limiter for mono subwoofer (JBL S3-1224) driven by high-gain
+      amplifier to prevent mechanical overdrive.
+    parameters:
+      clip_limit: -17
+      soft_clip: true
+    type: Limiter
+  limiter_sub_stereo:
+    description: Safety limiter for stereo subwoofers (NAR 1222.sw2) based on amplifier
+      gain and thermal limits.
+    parameters:
+      clip_limit: -10
+      soft_clip: true
+    type: Limiter
+  lpf_subwoofer:
+    description: Linkwitz-Riley 4th order low-pass crossover for all subwoofers at
+      80 Hz for proper bass management integration.
+    parameters:
+      freq: 80
+      order: 4
+      type: LinkwitzRileyLowpass
+    type: BiquadCombo
+  subsonic_subwoofer:
+    description: Infrasonic high-pass filter (20 Hz) to protect subwoofers from over-excursion
+      below enclosure tuning frequency.
+    parameters:
+      freq: 20
+      order: 4
+      type: LinkwitzRileyHighpass
+    type: BiquadCombo
+mixers:
+  matrix_2p3:
+    channels:
+      in: 2
+      out: 8
+    description: Stereo 2.3 matrix. Uses only channels 0/1 (L/R) from 8ch input, performs
+      clean bass management and routes three real subwoofer outputs.
+    labels:
+    - L
+    - R
+    - NC
+    - NC
+    - NC
+    - SB
+    - SB
+    - SB
+    mapping:
+    - dest: 0
+      mute: false
+      sources:
+      - channel: 0
+        gain: 0
+        inverted: false
+        mute: false
+        scale: dB
+    - dest: 1
+      mute: false
+      sources:
+      - channel: 1
+        gain: 0
+        inverted: true
+        mute: false
+        scale: dB
+    - dest: 2
+      mute: true
+      sources: []
+    - dest: 3
+      mute: true
+      sources: []
+    - dest: 4
+      mute: true
+      sources: []
+    - dest: 5
+      mute: false
+      sources:
+      - channel: 0
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+      - channel: 1
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+    - dest: 6
+      mute: true
+      sources:
+      - channel: 0
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+      - channel: 1
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+    - dest: 7
+      mute: true
+      sources:
+      - channel: 0
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+      - channel: 1
+        gain: -3
+        inverted: false
+        mute: false
+        scale: dB
+pipeline:
+- bypassed: null
+  description: null
+  name: matrix_2p3
+  type: Mixer
+- bypassed: null
+  channels:
+  - 0
+  - 1
+  description: Main channels HPF
+  names:
+  - hpf_mains
+  - gain_mains
+  - limiter_mains
+  type: Filter
+- bypassed: null
+  channels:
+  - 5
+  - 6
+  - 7
+  description: Subwoofer crossover and infrasonic protection
+  names:
+  - lpf_subwoofer
+  - subsonic_subwoofer
+  type: Filter
+- bypassed: null
+  channels:
+  - 5
+  description: Mono subwoofer gain and limiter
+  names:
+  - gain_sub_mono
+  - limiter_sub_mono
+  type: Filter
+- bypassed: null
+  channels:
+  - 6
+  - 7
+  description: Stereo subwoofers gain and limiter
+  names:
+  - gain_sub_stereo
+  - limiter_sub_stereo
+  type: Filter
+processors: null
+title: "Bridge: PC → rpi-camilla-bridge → CamillaDSP → HiFiBerry DAC8x (5.3)"

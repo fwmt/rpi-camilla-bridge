@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = ["proto", "pi-receiver", "pc-sender"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fwmt/rpi-camilla-bridge"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+crossbeam-channel = "0.5"
+ctrlc = { version = "3", features = ["termination"] }
+
+# Áudio
+cpal = "0.17"
+alsa = "0.11"
+
+# CamillaDSP websocket
+tungstenite = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+doc_markdown = "allow"
+unnecessary_wraps = "allow"
+needless_pass_by_value = "allow"
+similar_names = "allow"
+struct_field_names = "allow"
+too_many_lines = "allow"
+items_after_statements = "allow"
+redundant_closure_for_method_calls = "allow"
+single_match_else = "allow"
+trivially_copy_pass_by_ref = "allow"
+match_wildcard_for_single_variants = "allow"
+match_same_arms = "allow"
+needless_continue = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

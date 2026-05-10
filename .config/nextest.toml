@@ -1,0 +1,9 @@
+[profile.default]
+# Defaults are fine; documented here so future tweaks have a home.
+fail-fast = false
+
+[profile.ci]
+# Tighter retry policy for CI environments where flakes should still be
+# diagnosed rather than masked. Keep retries off until we have flakes worth
+# absorbing.
+fail-fast = false

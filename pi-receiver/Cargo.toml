@@ -1,0 +1,25 @@
+[package]
+name = "pi-receiver"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+proto = { path = "../proto" }
+anyhow.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+crossbeam-channel.workspace = true
+ctrlc.workspace = true
+tungstenite.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+alsa.workspace = true

@@ -1,0 +1,13 @@
+# Cross-compile pi-receiver for the Pi 5 (aarch64) using cross + Docker.
+# alsa-sys needs libasound2-dev inside the cross image, so we extend the
+# stock cross image rather than installing it on the host.
+
+[build.env]
+# Pass through optional ALSA env so users can debug with ALSA_DEBUG=1.
+passthrough = ["ALSA_DEBUG", "RUST_LOG", "RUST_BACKTRACE"]
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes libasound2-dev:$CROSS_DEB_ARCH",
+]

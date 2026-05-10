@@ -1,0 +1,20 @@
+[package]
+name = "pc-sender"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+proto = { path = "../proto" }
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+crossbeam-channel.workspace = true
+ctrlc.workspace = true
+cpal.workspace = true

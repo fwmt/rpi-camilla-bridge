@@ -1,0 +1,64 @@
+min_version = "2026.1.0"
+
+[tools]
+# Toolchain de desenvolvimento. MSRV do projeto (rust-version no Cargo.toml) é 1.85,
+# mas ferramentas como cargo-nextest exigem rustc mais novo para serem instaladas via `cargo install`.
+rust = "1.95"
+node = "22"
+"npm:pnpm" = "latest"
+"cargo:cargo-nextest" = "latest"
+"cargo:bacon" = "latest"
+"cargo:cargo-machete" = "latest"
+"cargo:cargo-deny" = "latest"
+"cargo:cross" = "latest"
+
+[env]
+RUST_BACKTRACE = "1"
+_.file = [".env.local"]
+
+[tasks.setup]
+description = "Configura toolchain e targets cross"
+run = """
+rustup target add aarch64-unknown-linux-gnu
+mise install
+"""
+
+[tasks.fmt]
+description = "Formata o código"
+run = "cargo fmt --all"
+
+[tasks.fmt-check]
+description = "Verifica formatação"
+run = "cargo fmt --all --check"
+
+[tasks.lint]
+description = "Clippy com warnings tratados como erro"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Testes via nextest"
+run = "cargo nextest run --workspace"
+
+[tasks.audit]
+description = "Audit de segurança e licenças"
+run = "cargo deny check"
+
+[tasks.unused-deps]
+description = "Detecta dependências não usadas"
+run = "cargo machete"
+
+[tasks.build]
+description = "Build release nativo"
+run = "cargo build --release --workspace"
+
+[tasks.build-pi]
+description = "Cross-build pi-receiver para aarch64"
+run = "cross build --release --target aarch64-unknown-linux-gnu -p pi-receiver"
+
+[tasks.watch]
+description = "Bacon em modo clippy"
+run = "bacon clippy"
+
+[tasks.ci]
+description = "Pipeline local: tudo que CI roda"
+depends = ["fmt-check", "lint", "test", "audit", "unused-deps"]
