@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-10
+
 ### Added
 
 - `pc-sender` smart sleep — when the input is silent (peak below
@@ -27,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own volume bridge that owns the DSP cap (e.g. a custom
   `volume_bridge.py` that maps a hardware volume control to a safe
   range — letting both fight produces inconsistent caps).
+- `deploy/pc-sender.service` — systemd `--user` unit so the bridge
+  starts automatically on login and restarts on failure. Linger
+  (`loginctl enable-linger`) keeps it alive across logout. Install
+  with `cp deploy/pc-sender.service ~/.config/systemd/user/`.
+
 ### Fixed
 
 - Duplicate "Raspberry Pi" entries in the OS Sound output list when
@@ -38,13 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pc-sender` no longer spams `network queue full → dropped chunk`
   while smart-sleeping; the warning only fires when a chunk above
   -60 dBFS is dropped, so genuine network overload is still visible.
-
-### Added
-
-- `deploy/pc-sender.service` — systemd `--user` unit so the bridge
-  starts automatically on login and restarts on failure. Linger
-  (`loginctl enable-linger`) keeps it alive across logout. `Install:
-  cp deploy/pc-sender.service ~/.config/systemd/user/`.
 
 ## [0.1.2] - 2026-05-10
 
@@ -185,7 +185,8 @@ crossovers, gain staging) always sit between the wire and the DAC.
   `.github/pull_request_template.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
 - Dual MIT / Apache-2.0 licensing.
 
-[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/fwmt/rpi-camilla-bridge/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.3
 [0.1.2]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.2
 [0.1.1]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.1
 [0.1.0]: https://github.com/fwmt/rpi-camilla-bridge/releases/tag/v0.1.0
