@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install ALSA dev headers
         run: |
@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y libasound2-dev
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
         with:
           version: 2026.4.28
           install: true
@@ -43,7 +43,7 @@ jobs:
         run: rustup component add clippy rustfmt
 
       - name: Cache cargo registry & target
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -62,10 +62,10 @@ jobs:
     timeout-minutes: 20
     needs: ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
         with:
           version: 2026.4.28
           install: true
@@ -78,7 +78,7 @@ jobs:
         run: rustup component add clippy rustfmt
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -96,7 +96,7 @@ jobs:
           file target/aarch64-unknown-linux-gnu/release/pi-receiver | grep -q "ARM aarch64"
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pi-receiver-aarch64
           path: target/aarch64-unknown-linux-gnu/release/pi-receiver
