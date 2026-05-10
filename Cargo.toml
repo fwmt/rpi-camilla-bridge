@@ -7,6 +7,10 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fwmt/rpi-camilla-bridge"
+homepage = "https://github.com/fwmt/rpi-camilla-bridge"
+description = "Stream PCM audio from a Linux/Windows PC to a Raspberry Pi running CamillaDSP, over a local TCP loopback."
+keywords = ["audio", "camilladsp", "alsa", "raspberry-pi", "loopback"]
+categories = ["multimedia::audio", "command-line-utilities"]
 publish = false
 
 [workspace.dependencies]

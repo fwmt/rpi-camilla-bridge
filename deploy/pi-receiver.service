@@ -11,22 +11,27 @@ Type=simple
 User=pi-camilla
 Group=audio
 SupplementaryGroups=audio
+# Adjust paths to where you placed your bridge / idle CamillaDSP configs.
+# `bridge.yml` must match the wire format `pc-sender` is producing.
+# `idle.yml` is whatever config you want CamillaDSP to run when no PC is
+# connected — typically a symlink or copy of your pre-bridge config
+# (Tidal Connect, Roon, mpd, etc.).
 ExecStart=/usr/local/bin/pi-receiver \
   --port 9000 \
   --device hw:Loopback,0,0 \
   --buffer-ms 200 \
   --camilla-host 127.0.0.1 \
   --camilla-port 1234 \
-  --bridge-config /home/fwmt/camilladsp/configs/bridge.yml \
-  --idle-config   /home/fwmt/camilladsp/configs/music.yml
+  --bridge-config /etc/rpi-camilla-bridge/bridge.yml \
+  --idle-config   /etc/rpi-camilla-bridge/idle.yml
 Restart=on-failure
 RestartSec=2
 
 # Minimal hardening — anything stricter (ProtectSystem=strict, ProtectHome,
-# PrivateTmp) breaks ALSA's config resolution under this build of libasound:
-# `snd_config_get_card` can no longer find the Loopback card alias and the
-# bridge dies on every connect with "Cannot get card index for Loopback".
-# We rely instead on:
+# PrivateTmp) breaks ALSA's config resolution under common builds of
+# libasound: snd_config_get_card can no longer find the Loopback card alias
+# and the bridge dies on every connect with "Cannot get card index for
+# Loopback". The real defenses are:
 #   - the dedicated unprivileged `pi-camilla` system user (no shell, no home);
 #   - the `enforce_loopback_only` guard inside pi-receiver, which refuses to
 #     open any device whose name does not contain "loopback" — so even with

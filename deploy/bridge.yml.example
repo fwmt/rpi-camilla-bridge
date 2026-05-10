@@ -1,0 +1,57 @@
+# Minimal bridge.yml — CamillaDSP config swapped in while pi-receiver is
+# delivering audio from a PC. This template is a stereo passthrough: it just
+# moves bytes from the loopback capture to the DAC playback. There is no
+# limiter, no crossover, no gain staging — that is your responsibility to
+# add for your speakers and amp chain.
+#
+# Replace `hw:CARD=...` with the real card name on your Pi (`aplay -L` or
+# `arecord -L` shows them) and adjust playback channels to your DAC.
+#
+# Wire contract (must match what `pc-sender` sends):
+#   format: S32LE
+#   capture_samplerate: 48000
+#   channels: 2
+# Change either pc-sender flags or this capture block together — never one
+# without the other.
+#
+# For a real-world example with full bass-management, gain staging and
+# limiters, see `examples/bridge-stereo-2.3-real-world.yml`.
+
+description: "Minimal stereo passthrough used by rpi-camilla-bridge while a\
+  \ PC source is connected. Adapt to your DAC and speaker chain — there are\
+  \ no protections in this template.\n"
+
+devices:
+  adjust_period: 5
+  capture:
+    type: Alsa
+    device: hw:CARD=Loopback,DEV=1
+    format: S32LE
+    channels: 2
+    labels:
+    - L
+    - R
+  capture_samplerate: 48000
+  chunksize: 2048
+  enable_rate_adjust: true
+  playback:
+    type: Alsa
+    device: hw:CARD=YourDAC,DEV=0   # ← change to your DAC card name
+    format: S32LE
+    channels: 2
+  queuelimit: 4
+  resampler:
+    type: AsyncSinc
+    profile: Balanced
+  samplerate: 48000           # raise to your DAC's preferred rate (96000, etc.)
+  silence_threshold: -60
+  silence_timeout: 0
+  stop_on_rate_change: false
+  target_level: 2048
+  volume_limit: -12
+  volume_ramp_time: 400
+
+# No filters, mixers or pipeline transforms — pure passthrough.
+filters: {}
+mixers: {}
+pipeline: []

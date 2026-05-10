@@ -1,16 +1,22 @@
-# bridge.yml — CamillaDSP config used while rpi-camilla-bridge is delivering
-# audio from a PC over TCP. This file is a derivative of music.yml: every
-# section below devices.capture* is intentionally identical to music.yml so
-# the protections, gain staging, crossovers and bass-management mixer remain
-# active. The only fields that change are the capture format/rate/channels,
-# which must match what the PC sender is putting on the wire.
+# Real-world example: stereo 2.3 (left + right + 3 subs) on a Pi 5 with the
+# HiFiBerry StudioDAC8x. Pipeline taken from a working production setup —
+# JBL Stage 250B mains and a JBL S3-1224 + 2× NAR 1222.sw2 sub array.
 #
-# Default wire contract (match `pc-sender --rate / --format / --channels`):
+# DO NOT copy this verbatim. The gain/limiter values are tuned for the
+# specific amplifier sensitivities and speaker thermal limits of that rig.
+# Wrong values can damage drivers. Use this only as a structural reference:
+#   - capture section is what rpi-camilla-bridge swaps to on connect (must
+#     match `pc-sender --format / --rate / --channels`);
+#   - everything else (filters, mixers, limiters, pipeline) is what you'd
+#     keep identical between your idle config and your bridge config so that
+#     the loudspeaker protection chain never drops while audio routes change.
+#
+# Default wire contract (matches `pc-sender` defaults):
 #   format: S32LE
 #   capture_samplerate: 48000
 #   channels: 2
 # CamillaDSP resamples to its internal 96 kHz with AsyncSinc — the PC never
-# resamples. If you change this contract, change pc-sender flags AND this
+# resamples. If you change this contract, change pc-sender flags AND the
 # capture block together.
 
 description: "Bridge config: PC → rpi-camilla-bridge → snd-aloop → CamillaDSP\

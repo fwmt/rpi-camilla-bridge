@@ -5,3 +5,9 @@
 mise.local.toml
 .DS_Store
 *.swp
+
+# User-specific CamillaDSP configs — gain staging is hardware-specific and
+# committing it would spread bad defaults. Keep your real bridge/idle next
+# to the example templates but leave them untracked.
+deploy/bridge.yml
+deploy/idle.yml
