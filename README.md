@@ -1,5 +1,9 @@
 # rpi-camilla-bridge
 
+[![ci](https://github.com/fwmt/rpi-camilla-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/fwmt/rpi-camilla-bridge/actions/workflows/ci.yml)
+[![license: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-orange.svg)](Cargo.toml)
+
 Stream PCM audio from a Linux/Windows PC to a Raspberry Pi running
 [CamillaDSP](https://github.com/HEnquist/camilladsp) over your LAN. The
 PC's audio lands inside an ALSA loopback that CamillaDSP captures from, so
@@ -290,11 +294,11 @@ or DAC families are welcome.
 
 ## Contributing
 
-PRs welcome. `mise run ci` must be green on `main`. Bug reports should
-include topology details (`cat /proc/asound/cards`,
-`pc-sender list-devices`, your bridge config redacted of personal
-notes, and `RUST_LOG=debug` logs). See `CONTRIBUTING.md` once that's
-added in Tier 2.
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+expectations: `mise run ci` green, scope kept narrow, real-world
+configs documented and never copied verbatim across hardware. Bug
+reports go through the issue template — it asks for the topology
+fields that make audio bugs diagnosable.
 
 ## License
 

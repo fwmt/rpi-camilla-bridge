@@ -1,0 +1,115 @@
+name: Bug report
+description: Report a defect with reproduction steps.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing this. Audio bugs are notoriously
+        hardware-specific — please fill the topology fields below
+        even if they feel verbose. They almost always change the
+        diagnosis.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: One paragraph. Include what you expected vs what you saw.
+      placeholder: |
+        After 30 s of streaming I get a burst of `try_recover` warnings
+        on pi-receiver and audio cuts out for ~200 ms. Expected steady
+        playback.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A working repro that fits in a single `pc-sender` invocation is gold.
+      placeholder: |
+        1. `mise run build-pi` and install the binary on the Pi.
+        2. `pc-sender --host pi.local --port 9000 --rate 96000`.
+        3. Wait ~30 s while playing real audio (not silence).
+        4. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: pi_topology
+    attributes:
+      label: Pi topology
+      description: |
+        Output of `cat /proc/asound/cards` and the `--device` /
+        `--bridge-config` / `--idle-config` flags `pi-receiver` was
+        started with.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: pc_devices
+    attributes:
+      label: PC capture device
+      description: |
+        Output of `pc-sender list-devices` (just the relevant host /
+        device blocks, not the whole listing) plus the `pc-sender`
+        flags you used.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: bridge_yml
+    attributes:
+      label: Bridge config — capture section
+      description: |
+        Just `devices.capture` and `devices.capture_samplerate` — the
+        rest of your pipeline is usually not relevant for wire-level
+        bugs. Redact anything personal.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: pi_logs
+    attributes:
+      label: pi-receiver logs (RUST_LOG=debug)
+      description: |
+        From `journalctl -u pi-receiver -b` or stdout if running in
+        the foreground. Spanning the failing window is what helps.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: pc_logs
+    attributes:
+      label: pc-sender logs (--log-level debug)
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`git rev-parse --short HEAD` or release tag."
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: pi_os
+    attributes:
+      label: Pi OS / kernel
+      description: "`uname -srv` and `cat /etc/os-release | head -3`."
+    validations:
+      required: true
+
+  - type: input
+    id: pc_os
+    attributes:
+      label: PC OS / audio stack
+      description: e.g. "Pop!_OS 24.04, PipeWire 1.5", "Windows 11 24H2 / WASAPI".
+    validations:
+      required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/fwmt/rpi-camilla-bridge/discussions
+    about: Open-ended questions, hardware compatibility, ideas. Discussions are easier to keep open and re-find than issues.

@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs of the same PR / branch — saves minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    name: mise run ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ALSA dev headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.4.28
+          install: true
+          cache: true
+
+      - name: Cache cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'mise.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: mise run ci
+        run: mise run ci
+
+  build-pi:
+    name: cross-build pi-receiver (aarch64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.4.28
+          install: true
+          cache: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-cross-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-cross-${{ runner.os }}-
+
+      - name: mise run build-pi
+        run: mise run build-pi
+
+      - name: Verify binary is aarch64 ELF
+        run: |
+          file target/aarch64-unknown-linux-gnu/release/pi-receiver
+          file target/aarch64-unknown-linux-gnu/release/pi-receiver | grep -q "ARM aarch64"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-receiver-aarch64
+          path: target/aarch64-unknown-linux-gnu/release/pi-receiver
+          if-no-files-found: error
+          retention-days: 14

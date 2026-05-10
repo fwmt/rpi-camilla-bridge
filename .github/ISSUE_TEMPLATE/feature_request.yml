@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest a change in scope, behaviour, or new platform support.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening, please skim `CONTRIBUTING.md`'s **Scope** section.
+        Some directions are deliberately out — async runtimes, in-wire
+        resampling, encryption, mDNS discovery, GUIs. If your idea
+        bumps into one of those, lead with why this case is worth
+        bending the rule.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Concrete situation, ideally with a real workflow. "It would be
+        nicer if…" is harder to evaluate than "I have N PCs and want
+        to round-robin between them."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Sketch the user-facing behaviour. Don't worry about
+        implementation details unless they're load-bearing.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds, off-the-shelf tools, or other designs you weighed.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope check
+      description: Which area does this touch?
+      options:
+        - proto (wire format)
+        - pi-receiver (Pi daemon)
+        - pc-sender (PC client)
+        - deploy / packaging
+        - examples / docs
+        - tooling (mise, CI)
+        - new platform support
+        - other
+    validations:
+      required: true
