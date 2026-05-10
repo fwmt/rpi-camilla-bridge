@@ -2,6 +2,8 @@
 
 mod audio_in;
 mod net_out;
+#[cfg(target_os = "linux")]
+mod virtual_sink;
 
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -31,9 +33,20 @@ struct Cli {
     #[arg(long, default_value_t = 9000, global = true)]
     port: u16,
 
-    /// Input device name (case-insensitive). Use "default" for the host default.
+    /// Input device name (case-insensitive). Use "default" for the host
+    /// default. On Linux, the default behavior also creates a PulseAudio /
+    /// PipeWire virtual output called "rpi-camilla-bridge" so the bridge
+    /// shows up in Settings → Sound → Output; pass any other name here to
+    /// skip that and capture from a specific cpal source.
     #[arg(long, default_value = "default", global = true)]
     device: String,
+
+    /// Linux only: skip creating the `rpi-camilla-bridge` virtual output
+    /// and capture from cpal's default input (typically your microphone).
+    /// Useful when you already route audio yourself or the target box has
+    /// no PulseAudio / PipeWire daemon running.
+    #[arg(long, global = true, default_value_t = false)]
+    no_virtual_sink: bool,
 
     /// Optional cpal host to pin (e.g. "alsa", "wasapi"). Empty = platform default.
     #[arg(long, global = true)]
@@ -155,6 +168,20 @@ fn run(cli: Cli) -> Result<()> {
         })
         .context("installing ctrl-c handler")?;
     }
+
+    // Linux: register a virtual output so the bridge appears in the OS
+    // Sound settings as "rpi-camilla-bridge". Held until `run` returns;
+    // its Drop impl unloads the sink and restores the previous default
+    // source. Other platforms get whatever cpal exposes as default.
+    #[cfg(target_os = "linux")]
+    let _virtual_sink = (!cli.no_virtual_sink && cli.device == "default")
+        .then(|| {
+            virtual_sink::VirtualSink::try_create()
+                .map_err(|e| warn!(error = %e, "could not register virtual output; falling back to cpal default"))
+                .ok()
+                .flatten()
+        })
+        .flatten();
 
     let (_host, device) = audio_in::pick_device(cli.cpal_host.as_deref(), &cli.device)
         .context("selecting cpal input device")?;

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pc-sender` on Linux now registers a PulseAudio / PipeWire null-sink
+  named **rpi-camilla-bridge** at startup, sets its monitor as the
+  system default source, and captures from it. The bridge appears in
+  *Settings → Sound → Output* as a regular speaker; route any app there
+  and the audio flows to the Pi instead of your local speakers. The
+  sink is unloaded and the previous default source is restored when
+  `pc-sender` exits. Behavior is suppressed by `--no-virtual-sink` or
+  by passing an explicit `--device <name>`. Windows / macOS get the
+  pre-existing cpal default-input behaviour for now.
+
+### Changed
+
+- `pc-sender --device` documentation now reflects that the default
+  also creates the Linux virtual output. `--no-virtual-sink` is the
+  opt-out flag.
+
 ## [0.1.0] - 2026-05-10
 
 ### Added

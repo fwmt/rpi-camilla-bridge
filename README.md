@@ -35,6 +35,13 @@ config via its websocket so the capture format matches what the wire is
 producing. On disconnect it restores your idle config (whatever you were
 running before — Tidal Connect, Roon, mpd, etc.).
 
+On Linux PCs (PulseAudio / PipeWire), `pc-sender` registers itself as a
+virtual output called **rpi-camilla-bridge** so it shows up in
+*Settings → Sound → Output* as a regular speaker. Pick it there and any
+app — browser, Spotify, mpv, a DAW — gets routed straight to your Pi's
+DAC through CamillaDSP. Quit `pc-sender` and the virtual output
+disappears, your previous default is restored.
+
 ## Why this exists
 
 Most "PC audio to Pi" stacks (Snapcast, PulseAudio over network, AirPlay,
@@ -261,11 +268,13 @@ or DAC families are welcome.
   running. Check with `systemctl status camilladsp` and
   `--camilla-host / --camilla-port`.
 
-- **cpal can't find a "loopback" device on Windows.** Use `pc-sender
-  list-devices` and pick the **monitor of your output device** (e.g.
-  "Headphones (loopback)" exposed by WASAPI), not a microphone input.
-  PipeWire on Linux similarly exposes `monitor of` sources for each
-  output.
+- **Windows captures the microphone, not system audio.** Native WASAPI
+  loopback is on the roadmap but not yet wired up. For now: install
+  [VB-CABLE](https://vb-audio.com/Cable/) (free), set it as your default
+  output in Sound settings, and run `pc-sender --device "CABLE Output"`.
+  Audio routed to VB-CABLE then flows through the bridge instead of your
+  speakers. Some Windows machines also expose a built-in "Stereo Mix"
+  capture device — `pc-sender list-devices` will show it if so.
 
 - **Other source (Tidal, Roon) stops working while bridge is connected.**
   Expected — both feed the same `hw:Loopback,0`. The bridge config is
