@@ -9,15 +9,17 @@
 mod alsa_out;
 mod camilla_ws;
 mod discovery;
+mod init;
 mod net_in;
 
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use crossbeam_channel::bounded;
 use proto::Header;
 use tracing::{info, warn};
@@ -26,42 +28,62 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(version, about = "rpi-camilla-bridge: PC → CamillaDSP TCP receiver")]
 struct Cli {
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+
     /// TCP port to listen on (binds 0.0.0.0).
-    #[arg(long, default_value_t = 9000)]
+    #[arg(long, default_value_t = 9000, global = true)]
     port: u16,
 
     /// ALSA playback device (the loopback half CamillaDSP captures from).
-    #[arg(long, default_value = "hw:Loopback,0,0")]
+    #[arg(long, default_value = "hw:Loopback,0,0", global = true)]
     device: String,
 
     /// Target ALSA buffer in milliseconds.
-    #[arg(long, default_value_t = 200)]
+    #[arg(long, default_value_t = 200, global = true)]
     buffer_ms: u32,
 
     /// CamillaDSP websocket host. Empty disables config switching.
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(long, default_value = "127.0.0.1", global = true)]
     camilla_host: String,
 
     /// CamillaDSP websocket port.
-    #[arg(long, default_value_t = 1234)]
+    #[arg(long, default_value_t = 1234, global = true)]
     camilla_port: u16,
 
     /// Path to the CamillaDSP config used while the bridge is active.
-    #[arg(long)]
+    #[arg(long, global = true)]
     bridge_config: Option<String>,
 
     /// Path to the CamillaDSP config restored when the bridge is idle.
-    #[arg(long)]
+    #[arg(long, global = true)]
     idle_config: Option<String>,
 
     /// Log level (trace, debug, info, warn, error). Overridden by `RUST_LOG`.
-    #[arg(long, default_value = "info")]
+    #[arg(long, default_value = "info", global = true)]
     log_level: String,
+}
+
+#[derive(Subcommand, Debug)]
+enum Cmd {
+    /// Interactive wizard that detects the local DAC and writes a starter
+    /// `bridge.yml`. Run as the user that should own the file (commonly
+    /// root, since the default target is /etc/rpi-camilla-bridge/).
+    Init {
+        /// Where to write the generated config. If omitted, the wizard
+        /// asks interactively.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(&cli.log_level);
+
+    if let Some(Cmd::Init { output }) = cli.cmd {
+        return init::run_wizard(output);
+    }
 
     // Hard speaker-protection guard: refuse to open anything that isn't an
     // ALSA loopback. The DAC must always be reached through CamillaDSP, never

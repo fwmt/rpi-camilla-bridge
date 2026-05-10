@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pi-receiver init` interactive wizard. Reads `/proc/asound/cards`,
+  filters out the loopback (so the speaker-protection guard is never
+  asked to swallow a self-routed config), prompts for channels and
+  sample rate, and writes a starter `bridge.yml` derived from the
+  shipped template. Three swap-points: the playback `hw:CARD=…` line,
+  the playback channel count, and the capture/playback samplerate.
+  Filters / mixers / pipeline are kept as the empty-passthrough so the
+  user adds their own protection chain — never auto-fills gain values.
+
 ## [0.1.1] - 2026-05-10
 
 ### Added
