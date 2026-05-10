@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pc-sender --device` documentation now reflects that the default
   also creates the Linux virtual output. `--no-virtual-sink` is the
   opt-out flag.
+- The Linux virtual output now appears as `Raspberry Pi (<host>)` in
+  the OS Sound settings (e.g. `Raspberry Pi (hifiberry)` when
+  `--host hifiberry.local` is passed) instead of the developer-y
+  `rpi-camilla-bridge`. Customizable via `--output-name "Living
+  Room"` for multi-Pi households. Internal sink id stays
+  `rpi_camilla_bridge` so app-level routing rules don't break across
+  upgrades.
 
 ## [0.1.0] - 2026-05-10
 

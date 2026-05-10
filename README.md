@@ -36,7 +36,7 @@ producing. On disconnect it restores your idle config (whatever you were
 running before — Tidal Connect, Roon, mpd, etc.).
 
 On Linux PCs (PulseAudio / PipeWire), `pc-sender` registers itself as a
-virtual output called **rpi-camilla-bridge** so it shows up in
+virtual output called **Raspberry Pi (\<host\>)** so it shows up in
 *Settings → Sound → Output* as a regular speaker. Pick it there and any
 app — browser, Spotify, mpv, a DAW — gets routed straight to your Pi's
 DAC through CamillaDSP. Quit `pc-sender` and the virtual output

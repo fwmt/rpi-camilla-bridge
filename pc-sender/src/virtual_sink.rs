@@ -19,7 +19,6 @@ use anyhow::{Context, Result, anyhow};
 use tracing::{info, warn};
 
 const SINK_NAME: &str = "rpi_camilla_bridge";
-const SINK_DESCRIPTION: &str = "rpi-camilla-bridge";
 
 pub struct VirtualSink {
     module_id: String,
@@ -30,7 +29,10 @@ impl VirtualSink {
     /// Create the null-sink and route the system default source at it.
     /// Returns `Ok(None)` (with a warning logged) if `pactl` is unavailable
     /// — caller should then fall back to whatever cpal exposes as default.
-    pub fn try_create() -> Result<Option<Self>> {
+    /// `description` is the user-facing label shown in the OS Sound
+    /// settings; it can contain spaces and parentheses but quote-marks
+    /// inside it are stripped to keep the pactl argument well-formed.
+    pub fn try_create(description: &str) -> Result<Option<Self>> {
         if which_pactl().is_none() {
             warn!(
                 "pactl not found on PATH; skipping virtual sink. \
@@ -49,11 +51,19 @@ impl VirtualSink {
         // Load the null-sink. `pactl load-module` prints the module ID on
         // success; a non-zero exit means the load failed (already loaded
         // with the same name, sink_properties syntax issue, etc.).
+        //
+        // pactl's sink_properties parser splits the value on regular spaces
+        // (treating each space as a key=value separator), so a description
+        // like `"Raspberry Pi (hifiberry)"` would be truncated to
+        // `Raspberry`. We swap regular spaces for U+00A0 (non-breaking
+        // space) — it's visually identical in every audio settings GUI we
+        // tested and survives pactl's parser.
+        let safe_desc = description.replace('"', "").replace(' ', "\u{00a0}");
         let load_args = [
             "load-module",
             "module-null-sink",
             &format!("sink_name={SINK_NAME}"),
-            &format!("sink_properties=device.description=\"{SINK_DESCRIPTION}\""),
+            &format!("sink_properties=device.description={safe_desc}"),
         ];
         let module_id = run_pactl(&load_args)
             .context("loading null-sink module via pactl")?
@@ -69,7 +79,7 @@ impl VirtualSink {
         info!(
             module_id = %module_id,
             sink = SINK_NAME,
-            description = SINK_DESCRIPTION,
+            description = %safe_desc,
             "registered virtual output (visible in Settings → Sound → Output)",
         );
 

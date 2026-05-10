@@ -41,12 +41,18 @@ struct Cli {
     #[arg(long, default_value = "default", global = true)]
     device: String,
 
-    /// Linux only: skip creating the `rpi-camilla-bridge` virtual output
-    /// and capture from cpal's default input (typically your microphone).
-    /// Useful when you already route audio yourself or the target box has
-    /// no PulseAudio / PipeWire daemon running.
+    /// Linux only: skip creating the virtual output and capture from
+    /// cpal's default input (typically your microphone). Useful when
+    /// you already route audio yourself or the target box has no
+    /// PulseAudio / PipeWire daemon running.
     #[arg(long, global = true, default_value_t = false)]
     no_virtual_sink: bool,
+
+    /// Linux only: friendly name shown in the OS Sound settings for the
+    /// virtual output. Defaults to `Raspberry Pi (<host>)` so multi-Pi
+    /// homes can tell their living-room and bedroom DACs apart.
+    #[arg(long, global = true)]
+    output_name: Option<String>,
 
     /// Optional cpal host to pin (e.g. "alsa", "wasapi"). Empty = platform default.
     #[arg(long, global = true)]
@@ -170,13 +176,17 @@ fn run(cli: Cli) -> Result<()> {
     }
 
     // Linux: register a virtual output so the bridge appears in the OS
-    // Sound settings as "rpi-camilla-bridge". Held until `run` returns;
+    // Sound settings as a regular speaker. Held until `run` returns;
     // its Drop impl unloads the sink and restores the previous default
     // source. Other platforms get whatever cpal exposes as default.
     #[cfg(target_os = "linux")]
     let _virtual_sink = (!cli.no_virtual_sink && cli.device == "default")
         .then(|| {
-            virtual_sink::VirtualSink::try_create()
+            let description = cli
+                .output_name
+                .clone()
+                .unwrap_or_else(|| default_output_name(&cli.host));
+            virtual_sink::VirtualSink::try_create(&description)
                 .map_err(|e| warn!(error = %e, "could not register virtual output; falling back to cpal default"))
                 .ok()
                 .flatten()
@@ -289,6 +299,19 @@ fn try_session(
         .map_err(|_| anyhow::anyhow!("writer panicked"))??;
     info!(bytes_sent = total, "session ended");
     Ok(())
+}
+
+/// Default user-facing label for the virtual output. Drops a trailing
+/// `.local` (mDNS hostname) so a `--host hifiberry.local` shows up as
+/// `Raspberry Pi (hifiberry)` rather than the noisier full form.
+#[cfg(target_os = "linux")]
+fn default_output_name(host: &str) -> String {
+    let short = host.trim_end_matches(".local").trim_end_matches('.');
+    if short.is_empty() {
+        "Raspberry Pi".to_string()
+    } else {
+        format!("Raspberry Pi ({short})")
+    }
 }
 
 fn resolve_one(host: &str, port: u16) -> Result<std::net::SocketAddr> {
