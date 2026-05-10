@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- mDNS / DNS-SD auto-discovery. `pi-receiver` publishes
+  `_camilla-bridge._tcp.local.` on every interface (auto-refreshing as
+  Wi-Fi / Ethernet come and go); `pc-sender` invoked without `--host`
+  browses the LAN for ~3 s and connects to whatever Pi answers. If
+  multiple Pis answer, `pc-sender` lists them and asks the user to
+  pick one with `--host <pi>.local`. Tolerant on both sides — if the
+  daemon can't start, the receiver still serves on TCP and the sender
+  still accepts an explicit host.
+- `pc-sender` connects to the discovered Pi via its mDNS hostname
+  (e.g. `hifiberry.local`) rather than the first announced IP. The
+  OS resolver picks a working address — important on Pis with multiple
+  interfaces (eno1, docker bridges, libvirt bridges) where
+  `enable_addr_auto()` would otherwise advertise every one of them.
+
 ## [0.1.0] - 2026-05-10
 
 First public release. PC ↔ Raspberry Pi audio bridge over TCP, feeding

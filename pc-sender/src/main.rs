@@ -1,6 +1,7 @@
 //! pc-sender: capture local audio via cpal and stream PCM to pi-receiver over TCP.
 
 mod audio_in;
+mod discovery;
 mod net_out;
 mod status;
 #[cfg(target_os = "linux")]
@@ -26,9 +27,15 @@ struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
 
-    /// Pi hostname or IP.
-    #[arg(long, default_value = "rpi.local", global = true)]
-    host: String,
+    /// Pi hostname or IP. Omit to auto-discover via mDNS — `pc-sender`
+    /// will browse the LAN for `_camilla-bridge._tcp.local.` and use
+    /// the first Pi that answers within 3 seconds.
+    #[arg(long, global = true)]
+    host: Option<String>,
+
+    /// Maximum time (ms) to wait for mDNS auto-discovery before giving up.
+    #[arg(long, default_value_t = 3_000, global = true)]
+    discover_ms: u64,
 
     /// pi-receiver TCP port.
     #[arg(long, default_value_t = 9000, global = true)]
@@ -184,7 +191,7 @@ fn list_devices() -> Result<()> {
     Ok(())
 }
 
-fn run(cli: Cli) -> Result<()> {
+fn run(mut cli: Cli) -> Result<()> {
     let stop = Arc::new(AtomicBool::new(false));
     {
         let s = Arc::clone(&stop);
@@ -194,6 +201,15 @@ fn run(cli: Cli) -> Result<()> {
         })
         .context("installing ctrl-c handler")?;
     }
+
+    // Resolve the target before creating the virtual sink, so its
+    // user-facing label can include the actual host name. mDNS
+    // auto-discovery runs only if --host wasn't given.
+    let host = match cli.host.clone() {
+        Some(h) => h,
+        None => discover_host(cli.discover_ms)?,
+    };
+    cli.host = Some(host.clone());
 
     // Linux: register a virtual output so the bridge appears in the OS
     // Sound settings as a regular speaker. Held until `run` returns;
@@ -205,7 +221,7 @@ fn run(cli: Cli) -> Result<()> {
             let description = cli
                 .output_name
                 .clone()
-                .unwrap_or_else(|| default_output_name(&cli.host));
+                .unwrap_or_else(|| default_output_name(&host));
             virtual_sink::VirtualSink::try_create(&description)
                 .map_err(|e| warn!(error = %e, "could not register virtual output; falling back to cpal default"))
                 .ok()
@@ -217,7 +233,7 @@ fn run(cli: Cli) -> Result<()> {
         let label = cli
             .output_name
             .clone()
-            .unwrap_or_else(|| default_output_name(&cli.host));
+            .unwrap_or_else(|| default_output_name(&host));
         status::ok(format!(
             "Audio output \"{label}\" is now in your Sound settings — pick it to route apps here"
         ));
@@ -242,7 +258,7 @@ fn run(cli: Cli) -> Result<()> {
     let mut backoff_ms = cli.reconnect_ms;
     let mut had_session = false;
     while !stop.load(Ordering::SeqCst) {
-        match try_session(&cli, &spec, &rx, &stop) {
+        match try_session(&cli, &host, &spec, &rx, &stop) {
             Ok(()) => {
                 backoff_ms = cli.reconnect_ms;
                 had_session = true;
@@ -250,10 +266,10 @@ fn run(cli: Cli) -> Result<()> {
             Err(e) => {
                 warn!(error = %e, "session ended; will reconnect");
                 if had_session {
-                    status::warn(format!("Lost connection to {}: {e}", cli.host));
+                    status::warn(format!("Lost connection to {host}: {e}"));
                     had_session = false;
                 } else {
-                    status::warn(format!("Could not reach {}:{}: {e}", cli.host, cli.port));
+                    status::warn(format!("Could not reach {host}:{}: {e}", cli.port));
                 }
             }
         }
@@ -275,13 +291,14 @@ fn run(cli: Cli) -> Result<()> {
 
 fn try_session(
     cli: &Cli,
+    host: &str,
     spec: &audio_in::CaptureSpec,
     rx: &crossbeam_channel::Receiver<Vec<u8>>,
     stop: &Arc<AtomicBool>,
 ) -> Result<()> {
-    info!(host = %cli.host, port = cli.port, "connecting");
+    info!(host = %host, port = cli.port, "connecting");
     let mut stream =
-        TcpStream::connect_timeout(&resolve_one(&cli.host, cli.port)?, Duration::from_secs(5))
+        TcpStream::connect_timeout(&resolve_one(host, cli.port)?, Duration::from_secs(5))
             .context("TCP connect")?;
     stream.set_nodelay(true).ok();
     stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
@@ -300,7 +317,7 @@ fn try_session(
     );
     status::ok(format!(
         "Streaming to {}:{} — {:?} / {} Hz / {}ch",
-        cli.host, cli.port, header.format, header.sample_rate, header.channels
+        host, cli.port, header.format, header.sample_rate, header.channels
     ));
 
     // Drain any chunks that piled up while disconnected so we start the new
@@ -375,6 +392,37 @@ fn default_output_name(host: &str) -> String {
         "Raspberry Pi".to_string()
     } else {
         format!("Raspberry Pi ({short})")
+    }
+}
+
+/// Browse the LAN for a `pi-receiver` advertising itself via mDNS. Returns
+/// the host string `try_session` should connect to. If multiple Pis answer,
+/// the user is told to disambiguate with `--host`.
+fn discover_host(timeout_ms: u64) -> Result<String> {
+    status::step(format!(
+        "Searching for a Raspberry Pi on the LAN (mDNS, {} s)…",
+        timeout_ms / 1000
+    ));
+    let timeout = Duration::from_millis(timeout_ms);
+    let peers = discovery::browse(timeout, true).context("mDNS discovery")?;
+    match peers.as_slice() {
+        [] => Err(anyhow::anyhow!(
+            "no pi-receiver found on the LAN within {timeout_ms} ms — pass `--host <pi>.local` explicitly"
+        )),
+        [one] => {
+            status::ok(format!("Found {} (port {})", one.host_label, one.port));
+            Ok(one.host_label.clone())
+        }
+        many => {
+            let listing: Vec<String> = many
+                .iter()
+                .map(|p| format!("  - {} (port {})", p.host_label, p.port))
+                .collect();
+            Err(anyhow::anyhow!(
+                "multiple Pis found on the LAN — re-run with --host <one of>:\n{}",
+                listing.join("\n")
+            ))
+        }
     }
 }
 

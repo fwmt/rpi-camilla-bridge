@@ -26,6 +26,10 @@ ctrlc = { version = "3", features = ["termination"] }
 cpal = "0.17"
 alsa = "0.11"
 
+# Service discovery
+mdns-sd = "0.19"
+gethostname = "1"
+
 # CamillaDSP websocket
 tungstenite = "0.29"
 serde = { version = "1", features = ["derive"] }

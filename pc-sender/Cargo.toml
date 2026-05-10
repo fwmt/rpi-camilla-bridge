@@ -18,3 +18,4 @@ tracing-subscriber.workspace = true
 crossbeam-channel.workspace = true
 ctrlc.workspace = true
 cpal.workspace = true
+mdns-sd.workspace = true

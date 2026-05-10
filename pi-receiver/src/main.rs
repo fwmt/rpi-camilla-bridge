@@ -8,6 +8,7 @@
 
 mod alsa_out;
 mod camilla_ws;
+mod discovery;
 mod net_in;
 
 use std::net::{TcpListener, TcpStream};
@@ -81,6 +82,16 @@ fn main() -> Result<()> {
     let listener = TcpListener::bind(("0.0.0.0", cli.port))
         .with_context(|| format!("binding TCP 0.0.0.0:{}", cli.port))?;
     info!(port = cli.port, "listening");
+
+    // Best-effort: publish ourselves on mDNS so PCs can find us without
+    // `--host`. Held until exit (Drop unregisters + shuts the daemon).
+    let _mdns = match discovery::ServiceRegistration::try_register(cli.port) {
+        Ok(reg) => Some(reg),
+        Err(e) => {
+            warn!(error = %e, "mDNS registration failed; clients will need --host");
+            None
+        }
+    };
 
     accept_loop(&listener, &cli, &stop)?;
     info!("exit");
