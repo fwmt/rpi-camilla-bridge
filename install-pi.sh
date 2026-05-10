@@ -24,6 +24,18 @@ INSTALL_DIR="${INSTALL_DIR:-/etc/rpi-camilla-bridge}"
 BIN_PATH="${BIN_PATH:-/usr/local/bin/pi-receiver}"
 SERVICE_PATH="${SERVICE_PATH:-/etc/systemd/system/pi-receiver.service}"
 
+# Script-scoped scratch directory; the EXIT trap below cleans it up no
+# matter where we leave from. Declared here (not inside the function
+# that uses it) so `set -u` is happy when the trap fires after the
+# function returns.
+WORK_DIR=""
+cleanup() {
+  if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR" ]; then
+    rm -rf "$WORK_DIR"
+  fi
+}
+trap cleanup EXIT
+
 log()  { printf '\033[1;34m▸\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
@@ -59,34 +71,32 @@ resolve_version() {
 }
 
 download_binary() {
-  local target=$(detect_arch)
+  local target; target=$(detect_arch)
   local asset="pi-receiver-${VERSION}-${target}.tar.gz"
   local url="https://github.com/$REPO/releases/download/$VERSION/$asset"
-  local tmpdir; tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
+  WORK_DIR=$(mktemp -d)
 
   log "Downloading $asset"
-  curl -fsSL "$url" -o "$tmpdir/$asset" \
+  curl -fsSL "$url" -o "$WORK_DIR/$asset" \
     || die "Download failed: $url"
-  curl -fsSL "$url.sha256" -o "$tmpdir/$asset.sha256" \
+  curl -fsSL "$url.sha256" -o "$WORK_DIR/$asset.sha256" \
     || warn "No checksum file alongside release; skipping verification."
 
-  if [ -f "$tmpdir/$asset.sha256" ]; then
+  if [ -f "$WORK_DIR/$asset.sha256" ]; then
     log "Verifying checksum"
-    (cd "$tmpdir" && sha256sum -c "$asset.sha256") \
+    (cd "$WORK_DIR" && sha256sum -c "$asset.sha256") \
       || die "Checksum mismatch for $asset"
   fi
 
   log "Extracting binary"
-  tar -C "$tmpdir" -xzf "$tmpdir/$asset"
-  local extracted_dir; extracted_dir=$(find "$tmpdir" -mindepth 1 -maxdepth 1 -type d | head -1)
+  tar -C "$WORK_DIR" -xzf "$WORK_DIR/$asset"
+  local extracted_dir; extracted_dir=$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)
   install -m 0755 "$extracted_dir/pi-receiver" "$BIN_PATH"
   log "Installed binary at $BIN_PATH"
 
   # Stash the deploy/ files we'll use below.
   STAGED_BRIDGE_EXAMPLE="$extracted_dir/bridge.yml.example"
   STAGED_SERVICE_FILE="$extracted_dir/pi-receiver.service"
-  STAGED_DEPLOY_README="$extracted_dir/README.md"
 }
 
 ensure_user() {
