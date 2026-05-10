@@ -1,0 +1,185 @@
+name: release
+
+# Triggered by pushing a tag like `v0.1.0`. Builds the receiver and
+# sender for each supported target, attaches them to the release the
+# tag implies, and (if the release doesn't exist yet) creates it with
+# the matching CHANGELOG section as the body.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build for (e.g. v0.1.0). Required for manual runs."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            crate: pi-receiver
+            binary: pi-receiver
+            archive: tar.gz
+            cross: true
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            crate: pc-sender
+            binary: pc-sender
+            archive: tar.gz
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            crate: pc-sender
+            binary: pc-sender.exe
+            archive: zip
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            crate: pc-sender
+            binary: pc-sender
+            archive: tar.gz
+            cross: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux ALSA dev headers
+        if: matrix.os == 'ubuntu-latest' && matrix.cross == false
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.4.28
+          install: true
+          cache: true
+
+      - name: Add target (native builds only)
+        if: matrix.cross == false
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-release-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-release-${{ matrix.target }}-
+
+      - name: Build (cross)
+        if: matrix.cross == true
+        run: cross build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
+
+      - name: Build (cargo)
+        if: matrix.cross == false
+        shell: bash
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.crate }}
+
+      - name: Stage and archive (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          STAGE="${{ matrix.crate }}-${GITHUB_REF_NAME:-${{ inputs.tag }}}-${{ matrix.target }}"
+          mkdir -p "dist/$STAGE"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/$STAGE/"
+          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "dist/$STAGE/"
+          if [ "${{ matrix.crate }}" = "pi-receiver" ]; then
+            cp deploy/pi-receiver.service deploy/bridge.yml.example deploy/README.md "dist/$STAGE/"
+          fi
+          tar -C dist -czf "dist/$STAGE.tar.gz" "$STAGE"
+          (cd dist && sha256sum "$STAGE.tar.gz" > "$STAGE.tar.gz.sha256")
+          ls -la dist/
+
+      - name: Stage and archive (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "${{ inputs.tag }}" }
+          $stage = "${{ matrix.crate }}-$tag-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "dist/$stage" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" -Destination "dist/$stage/"
+          Copy-Item "README.md","LICENSE-MIT","LICENSE-APACHE","CHANGELOG.md" -Destination "dist/$stage/"
+          Compress-Archive -Path "dist/$stage" -DestinationPath "dist/$stage.zip" -Force
+          $hash = Get-FileHash "dist/$stage.zip" -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $stage.zip" | Out-File -Encoding ascii "dist/$stage.zip.sha256"
+          Get-ChildItem dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.crate }}-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: publish release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract changelog body for this tag
+        id: changelog
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # Pull the section between `## [VERSION]` and the next `## [`.
+          awk -v ver="[$VERSION]" '
+            $0 ~ "^## " ver { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-body.md
+          if [ ! -s release-body.md ]; then
+            echo "Tag $TAG has no matching CHANGELOG section; using a generic body." >&2
+            echo "Release $TAG. See [CHANGELOG.md](CHANGELOG.md) for details." > release-body.md
+          fi
+          echo "Body for $TAG:"
+          cat release-body.md
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-body.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          fail_on_unmatched_files: true
